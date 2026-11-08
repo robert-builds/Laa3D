@@ -3,9 +3,9 @@
    Browser, jederzeit widerrufbar). Ohne Einwilligung findet KEINE Verbindung zu Dritten statt. Eigene Dateien oder ein Betreiber-Abruf sind nicht noetig. */
 (function () {
   'use strict';
-  var LUFT = 'https://air-quality-api.open-meteo.com/v1/air-quality?latitude=' + ((window.ORT || {}).wetter || [51.95, 12.95])[0] + '&longitude=' + ((window.ORT || {}).wetter || [51.95, 12.95])[1] + '&current=european_aqi,pm10,pm2_5,nitrogen_dioxide,ozone&timezone=Europe%2FBerlin';
+  var LUFT = 'https://air-quality-api.open-meteo.com/v1/air-quality?latitude=' + ((window.ORT || {}).wetter || [51.95, 12.95])[0] + '&longitude=' + ((window.ORT || {}).wetter || [51.95, 12.95])[1] + '&current=european_aqi,pm10,pm2_5,nitrogen_dioxide,ozone&timezone=' + encodeURIComponent((window.ORT || {}).zeitzone || 'Europe/Berlin');
   var BAU = 'https://isk.geobasis-bb.de/ows/baustelleninfo_wfs?service=WFS&version=2.0.0&request=GetFeature&typeNames=app:baustelleninfo&outputFormat=application/geo%2Bjson&srsName=EPSG:4326&bbox=' + (((window.ORT || {}).umgrenzung || [51.86, 12.75, 52.04, 13.15]).join(',')) + ',urn:ogc:def:crs:EPSG::4326';
-  var TZ = 'Europe/Berlin';
+  var TZ = (window.ORT || {}).zeitzone || 'Europe/Berlin';
   var ORTN = (window.ORT || {}).name || '';
 
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }

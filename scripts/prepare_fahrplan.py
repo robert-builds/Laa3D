@@ -1,6 +1,6 @@
-"""Zieht aus dem VBB-GTFS-Feed die Abfahrten der Haltestellen in der Gemeinde aus ort.json.
+"""Zieht aus dem GTFS-Feed (ort.json: fahrplan.gtfs_url) die Abfahrten der Haltestellen in der Gemeinde aus ort.json.
 
-Eingabe : data/raw/vbb/gtfs.zip  (https://unternehmen.vbb.de/gtfs, VBB, CC BY 4.0)
+Eingabe : data/raw/gtfs/gtfs.zip  (z. B. VBB oder OeBB, CC BY 4.0; die Dateien duerfen im ZIP auch in einem Unterordner liegen)
 Ausgabe : site/data/fahrplan.js  window.AL_FAHRPLAN = Haltestellengruppen mit Abfahrten (Sollfahrplan)
 
 Aufruf: python3 -I scripts/prepare_fahrplan.py
@@ -17,13 +17,17 @@ from geo import ORT, in_nb, pip, xz  # noqa: E402
 NB_HALTE = tuple(h.lower() for h in ((ORT.get("nachbarort") or {}).get("haltestellen") or []))
 
 ROOT = os.path.dirname(HERE)
-ZIP = os.path.join(ROOT, "data", "raw", "vbb", "gtfs.zip")
+ZIP = os.path.join(ROOT, "data", "raw", "gtfs", "gtfs.zip")
 OUT = os.path.join(ROOT, "site", "data", "fahrplan.js")
 N_DAYS = 120
 sys.stdout.reconfigure(encoding="utf-8")
 
 
 def rows(z, name):
+    if name not in z.namelist():  # Feeds mit Unterordner (OeBB: GTFS_Fahrplan_2026/stops.txt)
+        name = next((n for n in z.namelist() if n.endswith("/" + name)), name)
+    if name not in z.namelist():
+        return
     with z.open(name) as f:
         rd = csv.DictReader(io.TextIOWrapper(f, encoding="utf-8-sig", newline=""))
         for r in rd:
@@ -156,6 +160,7 @@ def main():
             h_idx[head] = len(h_list)
             h_list.append(head)
         groups[gi]["d"].append([hm(dep), r_idx[rid], h_idx[head], svc_idx[sid]])
+    groups = [g for g in groups if g["d"]]  # Haltepunkte ohne Abfahrt (z. B. Ersatzhaltestellen ohne Fahrten im Feed) weglassen
     for g in groups:
         g["d"] = sorted({tuple(x) for x in g["d"]})
         g["d"] = [list(x) for x in g["d"]]

@@ -1,4 +1,33 @@
-# MyCity3D
+# Laa3D – Laa an der Thaya in 3D
+
+Interaktive 3D-Karte der Stadtgemeinde **Laa an der Thaya** (Niederösterreich) aus offenen Daten. Fork der Vorlage MyCity3D, erweitert um österreichische Datenquellen:
+
+| Bereich | Quelle für Laa |
+|---|---|
+| Gebäude (3D, Blockmodell) | BEV, Digitales Landschaftsmodell – Bauwerke (Grundriss und Laserscan-Höhen), CC BY 4.0 |
+| Adressen, Gebäudenutzung | BEV, Österreichisches Adressregister (Stichtagsdaten) |
+| Luftbild | basemap.at, Orthofoto, CC BY 4.0 |
+| Gelände und Relief | BEV, ALS-Höhenraster, CC BY 4.0 |
+| Ortsteile | Katastralgemeinden aus OpenStreetMap: Hanfthal, Kottingneusiedl, Laa an der Thaya, Ruhhof, Ungerndorf, Wulzeshofen |
+| Bahn | ÖBB-Sollfahrplan (GTFS, CC BY 4.0): S2 und REX2 Laa – Wien; live (optional) über `v6.oebb.transport.rest` |
+| Wetter | Messstation Laa an der Thaya und amtliche Warnungen von GeoSphere Austria, Vorhersage über Open-Meteo |
+| **Neu:** Verordnungen | Verkehrsverordnungen der BH Mistelbach und Verordnungen der Stadtgemeinde aus data.gv.at, mit Ort auf der Karte |
+| **Neu:** Thaya und Grundwasser | Messstellen des Hydrographischen Dienstes NÖ in der Umgebung, mit Sprung zu den aktuellen Werten |
+| Müllabfuhr | eingebettete Abholtermine des GAUL (Abfallverband Laa) |
+
+Einrichtung und Einzelheiten: `docs/OESTERREICH.md`. Die Konfiguration steht in `ort.json` (Kopie in `beispiele/laa-an-der-thaya.json`); die Brandenburger Variante der Vorlage funktioniert weiter (`"staat": "DE"`, Beispiel `beispiele/niedergoersdorf.json`).
+
+Schnellstart für Laa:
+
+```
+pip install pillow numpy rasterio pyogrio
+python scripts/ort_pruefen.py
+python scripts/erstaufbau.py
+```
+
+---
+
+## Vorlage: MyCity3D
 
 3D-Ortskarte aus offenen Daten für eine Gemeinde: jedes Gebäude als Volumen auf dem Luftbild, dazu Adresssuche, Orte und Betriebe, Fahrpläne von Bus und Bahn mit Live-Abfahrten und fahrenden Zügen und Bussen, Wetter mit Wolken, Luftqualität, Baustellen, Bodenrichtwerte, Sonnenstand und Schatten, Dachfarbe, Solar-Eignung und Gelände.
 
@@ -22,7 +51,9 @@ Vorschau am Beispielort Niedergörsdorf: https://niedergoersdorf-in-3d.digital-a
 | Datenschutz | Inhaltsrichtlinie (CSP) ohne Inline-Skripte, aus `ort.json` erzeugt; keine Verbindung zu Dritten ohne Klick |
 | Pflege | Korrekturen von Betreibern ohne Eingriff in OpenStreetMap (`docs/KORREKTUREN.md`), Kachelkennung gegen veraltete Zwischenspeicher (`data/tv.js`, `versionieren.py`) |
 
-## Wichtig vorab: nur Brandenburg ist fertig verdrahtet
+## Wichtig vorab: Brandenburg und Österreich sind fertig verdrahtet
+
+Österreich (`land.staat = "AT"`): siehe `docs/OESTERREICH.md`. Die folgende Tabelle gilt für die deutsche Variante.
 
 | Baustein | Quelle | Gilt für |
 |---|---|---|

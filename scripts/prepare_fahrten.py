@@ -1,6 +1,6 @@
 """Zieht aus dem VBB-GTFS-Feed alle Fahrten, die den Kartenausschnitt der Gemeinde beruehren.
 
-Eingabe : data/raw/vbb/gtfs.zip  (https://unternehmen.vbb.de/gtfs, VBB, CC BY 4.0)
+Eingabe : data/raw/gtfs/gtfs.zip  (ort.json fahrplan.gtfs_url, CC BY 4.0)
 Ausgabe : site/data/fahrten.js   window.AL_FAHRTEN = Fahrten mit Halten (x, z, Ankunft, Abfahrt) allein aus dem Sollfahrplan
 
 Damit fahren im Browser Zuege und Busse ohne Live-Daten. Je Fahrt stehen nur die Halte im erweiterten Ausschnitt

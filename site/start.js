@@ -20,8 +20,11 @@
       ['Fahrplan', 'gültig bis ' + kurz(ST.fahrplan.bis), ((window.ORT || {}).betreiberKurz || 'Sollfahrplan') + '-Sollfahrplan, gelesen ' + kurz(ST.fahrplan.stand)],
       ST.termine.stand ? ['Termine', kurz(ST.termine.stand), ST.termine.anzahl + ' Termine' + (ST.termine.quelle ? ', ' + ST.termine.quelle : '')] : null,
       ST.ortsteilInfo ? ['Ortsteil-Porträts', kurz(ST.ortsteilInfo), 'Website der Gemeinde'] : null,
-      ['Gebäude und Adressen', 'abgerufen ' + kurz(ST.lgb), zahl(ST.gebaeude) + ' Gebäude, ' + zahl(ST.adressen) + ' Adressen (LGB)'],
-      ['Bodenrichtwerte', 'Stichtag ' + kurz(ST.brw), 'BORIS Brandenburg']
+      (window.ORT || {}).staat === 'AT' && ST.stichtage
+        ? ['Gebäude und Adressen', 'Stichtag ' + kurz(ST.stichtage.Adressen), zahl(ST.gebaeude) + ' Gebäude (BEV, Landschaftsmodell Stichtag ' + kurz(ST.stichtage['Gebäude (Grundriss, Höhen)']) + '), ' + zahl(ST.adressen) + ' Adressen (Adressregister)']
+        : ['Gebäude und Adressen', 'abgerufen ' + kurz(ST.lgb), zahl(ST.gebaeude) + ' Gebäude, ' + zahl(ST.adressen) + ' Adressen (LGB)'],
+      ST.brw ? ['Bodenrichtwerte', 'Stichtag ' + kurz(ST.brw), 'BORIS Brandenburg'] : null,
+      window.AL_VO && window.AL_VO.stand ? ['Verordnungen', kurz(window.AL_VO.stand), window.AL_VO.items.length + ' aus data.gv.at'] : null
     ].filter(Boolean);
     var grid = $('#standGrid');
     rows.forEach(function (r) {

@@ -9,6 +9,13 @@
   const ORT = window.ORT || {}, ORT_NAME = ORT.name || 'Ort', NB_NAME = ORT.nb || 'Nachbarort', ART = ORT.art || 'Gemeinde';
   const BETR = ORT.betreiberKurz || 'Fahrplan'; // Kurzname des Fahrplan-Betreibers (ort.json)
   const ORTSTEILE_SEITE = ORT.ortsteileSeite || ''; // optional: Seite mit Ortsporträts der Gemeinde (ort.json), leer = keine
+  const AT = ORT.staat === 'AT'; // Österreich: Gebäude und Adressen vom BEV, Luftbild basemap.at, Wetter GeoSphere Austria
+  const HB = ORT.hoehe || 'm über NHN'; // Höhenbezug: Deutschland Normalhöhennull, Österreich Meter über Adria
+  const TZ = ORT.zeitzone || 'Europe/Berlin';
+  const GEO_SRC = AT ? ['BEV: DLM Bauwerke (CC BY 4.0) und Österreichisches Adressregister', 'https://www.bev.gv.at/Services/Produkte/Digitales-Landschaftsmodell/Bauwerke.html']
+    : ['LGB Brandenburg: Gebäude LoD2 und Adressen (dl-de/by-2.0)', 'https://www.govdata.de/dl-de/by-2-0'];
+  const ADR_SRC = AT ? ['Österreichisches Adressregister (BEV)', 'https://www.bev.gv.at/Services/Produkte/Adressregister/Oesterreichisches-Adressregister.html'] : ['LGB Brandenburg, Adressen (dl-de/by-2.0)', 'https://www.govdata.de/dl-de/by-2-0'];
+  const VO = window.AL_VO || null, GEW = window.AL_GEW || null; // Österreich: Verordnungen (data.gv.at) und Gewässer-Messstellen (Land NÖ)
   const $ = (s, r) => (r || document).querySelector(s);
   const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -23,7 +30,7 @@
   // ------------------------------------------------------------------ Zustand
   const S = {
     dirty: true, moved: true, colorMode: 'nutzung', sel: null, pending: null, panel: null,
-    L: { photo: true, buildings: true, trees: true, places: true, stops: true, fahrzeuge: true, events: true, labels: true, borders: true, roads: false, shadows: true, brw: false, wolken: true, relief: false },
+    L: { photo: true, buildings: true, trees: true, places: true, stops: true, fahrzeuge: true, events: true, labels: true, borders: true, roads: false, shadows: true, brw: false, wolken: true, relief: false, vo: true, gew: true },
     sun: { y: 2026, mo: 6, d: 21, min: 14 * 60 }, playing: false, spot: null, evFilter: '30', evCats: new Set(), evArea: 'all', plSel: new Set(), plArea: 'gem', dim: 1,
   };
 
@@ -271,6 +278,7 @@
   // Nutzbare Fläche: 75 % einer geneigten, 50 % einer flachen Fläche (Abstände, Gauben, Schornsteine, Aufständerung); 0,21 kWp je m²; Ertrag: 980 kWh je kWp und Jahr bei bester Ausrichtung
   // (Mitteldeutschland, ort.json: bausteine.solar_kwh_je_kwp). Gegenprobe an einem bekannten Dach mit 21 kWp installierter Leistung: Schätzung rund 19 kWp. Ohne Verschattung durch Bäume und Nachbarn, ohne Statik, Denkmalschutz, Eigenverbrauch.
   const SOL_KWH = Number(ORT.solarKwh) || 980; // kWh je kWp und Jahr bei bester Ausrichtung
+  const SOL_ON = !!ORT.solarKwh || !AT; // Solar-Schätzung braucht Dachflächen (LoD2); Österreich: Blockmodell mit flachen Dächern, daher aus
   const SOL_CY = Math.cos(35 * Math.PI / 180), SOL_SZ = Math.sin(35 * Math.PI / 180);
   const SOL_STOPS = [[0.55, col('#5a6785')], [0.8, col('#f1b44c')], [0.95, col('#4fd08a')]];
   function solarColor(f) {
@@ -305,6 +313,7 @@
   }
   const nf = (n, step) => (Math.round(n / step) * step).toLocaleString('de-DE');
   function solarRows(b) {
+    if (!SOL_ON) return '';
     const q = solarOf(b); if (q.tot < 12) return '';
     return '<dt>Dach</dt><dd>' + nf(q.tot, 1) + ' m² Dachfläche</dd><dt>Solar</dt><dd>'
       + (q.use >= 5 ? 'rund ' + nf(q.use, 5) + ' m² nutzbar, ca. ' + nf(q.kwp, 0.5) + ' kWp, ca. ' + nf(q.kwh, 100) + ' kWh im Jahr<span class="s">Schätzung ohne Gewähr, ohne Verschattung und Statik</span>' : 'kaum geeignete Dachfläche (Nordseiten)') + '</dd>';
@@ -613,7 +622,7 @@
       el.innerHTML = '<b>Gebäudehöhe</b>' + lg('#f0e6c8', 'niedrig') + lg('#e0983f', 'rund 9 m') + lg('#8b2e2e', '18 m und mehr');
     } else if (S.colorMode === 'dach') {
       el.hidden = false;
-      el.innerHTML = '<b>Dachfarbe</b><span class="s">aus dem Luftbild (LGB) je Gebäude, Schätzung: Schatten, Bäume und die Schrägsicht des Luftbilds verfälschen einzelne Dächer</span>';
+      el.innerHTML = '<b>Dachfarbe</b><span class="s">aus dem Luftbild (' + (AT ? 'basemap.at' : 'LGB') + ') je Gebäude, Schätzung: Schatten, Bäume und die Schrägsicht des Luftbilds verfälschen einzelne Dächer</span>';
     } else if (S.colorMode === 'solar') {
       el.hidden = false;
       el.innerHTML = '<b>Solar-Eignung je Dachfläche</b><span class="s">Schätzung aus Neigung und Ausrichtung, ohne Verschattung</span>' + lg('#4fd08a', 'gut (Süd, flach)') + lg('#f1b44c', 'bedingt (Ost, West)') + lg('#5a6785', 'wenig (Nordseite)');
@@ -622,7 +631,63 @@
       el.innerHTML = '<b>Gebäudenutzung</b>' + ['wohnen', 'gewerbe', 'industrie', 'oeffentlich', 'landwirtschaft', 'neben'].map((k) => lg(WALL[k], USE_DE[k])).join('');
     } else el.hidden = true;
   }
+  // ------------------------------------------------------------------ Verordnungen (Österreich: data.gv.at, scripts/fetch_verordnungen.py)
+  // Verkehrsverordnungen der Bezirkshauptmannschaft und Verordnungen der Gemeinde. Ein Punkt auf der Karte nur, wenn der Text eine Straße der Gemeinde nennt.
+  const VO_ART = { 'vorübergehend': ['Vorübergehend', 'vt'], dauernd: ['Dauernd', 'vd'], gemeinde: ['Gemeinde', 'vg'], sonst: ['Verordnung', 'vg'] };
+  const VO_ITEMS = VO && VO.items ? VO.items : [];
+  VO_ITEMS.forEach((v, i) => {
+    v.i = i;
+    if (v.x == null) return;
+    v.marker = addMarker('vo ' + (VO_ART[v.art] || VO_ART.sonst)[1], '§', v.x, 10, v.z, () => showVo(v), v.titel.replace(/^(Vorübergehende|Dauernde) Verordnung,\s*/, ''));
+  });
+  function voItem(v) {
+    const a = VO_ART[v.art] || VO_ART.sonst;
+    return '<button class="item" data-vo="' + v.i + '"><span class="t">' + esc(fmtIso(v.datum) || '–') + '</span><span><span class="vtag ' + a[1] + '">' + a[0] + '</span> ' + esc(v.text || v.titel) + '<span class="s">' + esc(v.behoerde) + (v.s ? ' · ' + esc(v.s) : '') + '</span></span></button>';
+  }
+  function showVo(v) {
+    $$('.mk.sel').forEach((m) => m.classList.remove('sel')); if (v.marker) v.marker.el.classList.add('sel');
+    const a = VO_ART[v.art] || VO_ART.sonst, doc = safeUrl(v.doc), page = safeUrl(v.seite);
+    openCard('<h3>' + esc(v.titel) + '</h3><p class="sub"><span class="vtag ' + a[1] + '">' + a[0] + '</span> ' + esc(v.behoerde) + '</p><dl>'
+      + '<dt>Inhalt</dt><dd>' + esc(v.text || '–') + '<span class="s">Kurztext aus dem Katalog; maßgeblich ist das Dokument</span></dd>'
+      + '<dt>Veröffentlicht</dt><dd>' + esc(fmtIso(v.datum) || 'ohne Angabe') + '</dd>' + (v.s ? '<dt>Ort</dt><dd>' + esc(v.s) + '<span class="s">Punkt: Mitte der Adressen dieser Straße, nur zur Orientierung</span></dd>' : '') + '</dl>'
+      + (doc ? '<a href="' + esc(doc) + '" target="_blank" rel="noopener">Amtliches Dokument öffnen →</a>' : '')
+      + sourceLine('data.gv.at, CC BY 4.0' + (VO.stand ? ', gelesen ' + fmtIso(VO.stand) : ''), page || 'https://www.data.gv.at'));
+    if (v.x != null) flyTo({ tx: v.x, tz: v.z, dist: 900, phi: 0.9 }, 1000);
+  }
+  function voList(box) {
+    if (!box || !VO_ITEMS.length) return;
+    const heute = new Date().toISOString().slice(0, 10), neu = VO_ITEMS.filter((v) => v.datum && (Date.parse(heute) - Date.parse(v.datum)) < 120 * 864e5);
+    const zeig = (neu.length ? neu : VO_ITEMS).slice(0, 8);
+    box.innerHTML = '<b class="lgt">Verordnungen</b><p class="lgn">Verkehrsverordnungen der Bezirkshauptmannschaft und Verordnungen der Gemeinde' + (neu.length ? ' der letzten vier Monate' : '') + ', neueste zuerst.</p><div class="items">' + zeig.map(voItem).join('') + '</div>'
+      + (VO_ITEMS.length > zeig.length ? '<button class="chip" data-vo-all>Alle ' + VO_ITEMS.length + ' der letzten ' + VO.monate + ' Monate</button>' : '')
+      + '<p class="lgn">Quelle: <a href="https://www.data.gv.at" target="_blank" rel="noopener">data.gv.at</a>, CC BY 4.0, Stand ' + esc(fmtIso(VO.stand)) + '. Ohne Gewähr, maßgeblich sind die Kundmachungen.</p>';
+    const bind = () => { $$('[data-vo]', box).forEach((b) => { b.onclick = () => showVo(VO_ITEMS[+b.dataset.vo]); }); };
+    const all = $('[data-vo-all]', box); if (all) all.onclick = () => { $('.items', box).innerHTML = VO_ITEMS.map(voItem).join(''); all.remove(); bind(); };
+    bind();
+  }
+  // ------------------------------------------------------------------ Gewässer und Grundwasser (Messstellen des Landes, scripts/fetch_gewaesser.py)
+  const GEW_ITEMS = GEW && GEW.items ? GEW.items : [];
+  GEW_ITEMS.forEach((g) => { g.marker = addMarker('gew' + (g.art === 'Grundwasser' ? ' gw' : ''), g.art === 'Grundwasser' ? '◍' : '≈', g.x, 8, g.z, () => showGew(g), g.n + (g.fluss ? ' (' + g.fluss + ')' : '')); });
+  const MESS_DE = { Wasserstand: 'Wasserstand', Durchfluss: 'Durchfluss', DurchflussPrognose: 'Durchflussprognose', Wassertemperatur: 'Wassertemperatur', Grundwasserspiegel: 'Grundwasserspiegel' };
+  function gewList(box) {
+    if (!box) return;
+    box.innerHTML = '<b class="lgt">Gewässer und Grundwasser</b><p class="lgn">Messstellen im Umkreis von ' + GEW.radius + ' km. Aktuelle Wasserstände und Warnstufen beim Land Niederösterreich.</p><div class="items">'
+      + GEW_ITEMS.map((g, i) => '<button class="item" data-gew="' + i + '"><span class="t">' + nfH(g.km) + ' km</span><span>' + esc(g.n) + '<span class="s">' + esc(g.art + (g.fluss ? ' · ' + g.fluss : '')) + '</span></span></button>').join('')
+      + '</div><p class="lgn"><a href="' + esc(GEW.seite) + '" target="_blank" rel="noopener">Wasserstand Niederösterreich öffnen →</a></p>';
+    $$('[data-gew]', box).forEach((b) => { b.onclick = () => showGew(GEW_ITEMS[+b.dataset.gew]); });
+  }
+  function showGew(g) {
+    if (!g) return;
+    $$('.mk.sel').forEach((m) => m.classList.remove('sel')); if (g.marker) g.marker.el.classList.add('sel');
+    openCard('<h3>' + esc(g.n) + '</h3><p class="sub">' + esc(g.art === 'Grundwasser' ? 'Grundwasser-Messstelle' : 'Pegel' + (g.fluss ? ' an der ' + g.fluss : '')) + '</p><dl>'
+      + '<dt>Misst</dt><dd>' + esc(g.mess.map((m) => MESS_DE[m] || m).join(', ')) + '</dd><dt>Entfernung</dt><dd>' + nfH(g.km) + ' km von der Wetterstation</dd></dl>'
+      + (safeUrl(g.url) ? '<a href="' + esc(g.url) + '" target="_blank" rel="noopener">Aktuelle Werte beim Land Niederösterreich →</a>' : '')
+      + '<p class="note">Die Karte zeigt keine Messwerte: Wasserstände ändern sich stündlich, maßgeblich sind die Werte und Warnungen des Landes.</p>'
+      + sourceLine('Hydrographischer Dienst Niederösterreich (Lage und Name der Messstelle)', GEW.seite));
+    flyTo({ tx: g.x, tz: g.z, dist: 1600, phi: 0.9 }, 1000);
+  }
   $('#nPlaces').textContent = PLACES.filter((p) => !p.nb).length;
+  if ($('#nOt')) $('#nOt').textContent = OT.length + ' Ortsteile';
   $('#nEvents').textContent = EV.filter((e) => e.off >= 0 && !e.nbE).length; // Zähler: Gebiet (der Nachbarort steht in der Liste dazu)
   (function evBanner() { // Herkunft der Termine: Beispieldaten kennzeichnen, echte Termine mit Quelle und Stand
     const el = $('#evBanner'), auto = window.AL_EVENTS_AUTO;
@@ -634,10 +699,10 @@
   function updateMarkers() {
     const w = canvas.clientWidth, h = canvas.clientHeight, v = new THREE.Vector3(), far = view.dist > 1300;
     markers.forEach((m) => {
-      const on = m.cls === 'poi' ? S.L.places && (!S.plSel.size || S.plSel.has(m.grp)) : m.cls === 'ev' ? S.L.events : m.cls === 'ot' ? S.L.labels : m.cls === 'brw' ? S.L.brw : m.cls === 'veh' ? S.L.fahrzeuge : S.L.stops;
+      const on = m.cls === 'poi' ? S.L.places && (!S.plSel.size || S.plSel.has(m.grp)) : m.cls === 'ev' ? S.L.events : m.cls === 'ot' ? S.L.labels : m.cls === 'brw' ? S.L.brw : m.cls === 'veh' ? S.L.fahrzeuge : m.cls === 'vo' ? S.L.vo : m.cls === 'gew' ? S.L.gew : S.L.stops;
       v.copy(m.v).project(camera);
       const x = (v.x * 0.5 + 0.5) * w, y = (-v.y * 0.5 + 0.5) * h;
-      const near = m.cls === 'ot' ? far : m.cls === 'brw' ? view.dist < 12000 : (!far || view.dist < 2600) && camera.position.distanceTo(m.v) < 1900;
+      const near = m.cls === 'ot' ? far : m.cls === 'brw' || m.cls === 'gew' ? view.dist < 12000 : (!far || view.dist < 2600) && camera.position.distanceTo(m.v) < 1900;
       const vis = on && near && v.z < 1 && x > -60 && x < w + 60 && y > -40 && y < h + 40;
       m.el.style.display = vis ? '' : 'none';
       if (vis) m.el.style.transform = 'translate(' + x.toFixed(1) + 'px,' + y.toFixed(1) + 'px) translate(-50%,-100%)';
@@ -864,9 +929,13 @@
     openCard('<h3>' + (addr.length ? addr[0] : 'Gebäude') + '</h3><p class="sub">' + (otName(b.o) ? esc(otName(b.o)) + ' · ' : '') + esc(USE_DE[b.u] || 'Nutzung unbekannt') + '</p><dl>'
       + (addr.length > 1 ? '<dt>Weitere Adressen</dt><dd>' + addr.slice(1).join(', ') + '</dd>' : '')
       + (addr.length ? '' : '<dt>Adresse</dt><dd>keine amtliche Adresse zugeordnet</dd>')
-      + '<dt>Höhe</dt><dd>' + (b.h ? b.h.toFixed(1) + ' m über Grund' : '–') + '</dd><dt>Gesamthöhe</dt><dd>' + b.t.toFixed(1) + ' m</dd>' + (b.hn != null ? '<dt>Gelände</dt><dd>' + nfH(b.hn) + ' m über NHN<span class="s">am Gebäude, aus dem Geländemodell (10 m)</span></dd>' : '') + solarRows(b) + brwRow(b.x, b.z) + '</dl>'
+      + (b.fn ? '<dt>Funktion</dt><dd>' + esc(b.fn.join(', ')) + '<span class="s">laut Adressregister</span></dd>' : '')
+      + '<dt>Höhe</dt><dd>' + (b.h ? nfH(b.h) + ' m über Grund' : '–') + (AT ? '<span class="s">' + (b.he ? 'angenommen: im Landschaftsmodell ohne Höhe' : 'Median der Laserscan-Höhen im Grundriss; das Modell hat flache Dächer') + '</span>' : '') + '</dd>'
+      + '<dt>Gesamthöhe</dt><dd>' + nfH(b.t) + ' m' + (AT && !b.he ? '<span class="s">höchster Punkt laut Laserscan</span>' : '') + '</dd>'
+      + (b.fl ? '<dt>Grundfläche</dt><dd>' + b.fl.toLocaleString('de-DE') + ' m²</dd>' : '')
+      + (b.hn != null ? '<dt>Gelände</dt><dd>' + nfH(b.hn) + ' ' + HB + '<span class="s">am Gebäude, aus dem Geländemodell (10 m)</span></dd>' : '') + solarRows(b) + brwRow(b.x, b.z) + '</dl>'
       + (BRW ? BRW_NOTE : '') + '<button class="chip" id="toSun">☀ Besonnung anzeigen</button>'
-      + sourceLine('LGB Brandenburg: Gebäude LoD2 und Adressen (dl-de/by-2.0)', 'https://www.govdata.de/dl-de/by-2-0'));
+      + sourceLine(GEO_SRC[0], GEO_SRC[1]));
     $('#toSun').onclick = () => openPanel('sun', true);
   }
   // Reiter in Karten: Ort und seine Termine bleiben zusammen (Ortskarte: Ort | Termine, Terminkarte: Veranstaltung | Ort)
@@ -885,7 +954,7 @@
   function placePane(p) {
     const st = AL.openStatus(p.oh, nowB()), web = safeUrl(p.web);
     return '<dl>'
-      + (p.ad ? '<dt>Adresse</dt><dd>' + esc(p.ad) + '</dd>' : '') + (p.hn != null ? '<dt>Höhe</dt><dd>' + nfH(p.hn) + ' m über NHN</dd>' : '') + '<dt>Jetzt</dt><dd><span class="tag ' + st.state + '">' + esc(st.text) + '</span></dd>'
+      + (p.ad ? '<dt>Adresse</dt><dd>' + esc(p.ad) + '</dd>' : '') + (p.hn != null ? '<dt>Höhe</dt><dd>' + nfH(p.hn) + ' ' + HB + '</dd>' : '') + '<dt>Jetzt</dt><dd><span class="tag ' + st.state + '">' + esc(st.text) + '</span></dd>'
       + '<dt>Zeiten</dt><dd>' + (p.oh ? esc(ohDe(p.oh)) + (p.ohw ? '<span class="s">laut Webseite, Stand ' + esc(fmtIso(p.wg)) + '</span>' : '') : p.wt ? esc(p.wt) + '<span class="s">Wortlaut der Webseite, Stand ' + esc(fmtIso(p.wg)) + '</span>' : 'nicht verifiziert') + '</dd>'
       + (p.tel ? '<dt>Telefon</dt><dd><a href="tel:' + esc(String(p.tel).replace(/[^+\d]/g, '')) + '">' + esc(p.tel) + '</a></dd>' : '')
       + (p.mail && /^[^\s@<>"]+@[^\s@<>"]+$/.test(p.mail) ? '<dt>E-Mail</dt><dd><a href="mailto:' + esc(p.mail) + '">' + esc(p.mail) + '</a></dd>' : '') + '</dl>'
@@ -958,7 +1027,7 @@
     const d = await vbbGet('/stops/' + id + '/departures?' + (back ? 'when=' + encodeURIComponent(new Date(Date.now() - back * 60000).toISOString()) + '&' : '') + 'duration=' + (mins + back) + '&results=' + (back ? 45 : 25) + '&remarks=true&language=de');
     vbbCache[k] = { t: Date.now(), d }; return d;
   }
-  const clockFmt = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' });
+  const clockFmt = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: TZ });
   const lnClass = (p) => (p === 'bus' ? 'bus' : p === 'suburban' ? 'sbahn' : p === 'tram' ? 'tram' : p === 'regional' || p === 'express' ? 'bahn' : '');
   const warnTexts = (dep) => { const m = new Map(); (dep.departures || []).forEach((x) => (x.remarks || []).forEach((r) => { if (r.type === 'warning' && (r.summary || r.text)) m.set(r.summary || r.text, r); })); return [...m.values()]; };
   const warnHtml = (list) => list.map((r) => '<div class="warnbox"><b>' + esc(r.summary || '') + '</b>' + (r.text && r.text !== r.summary ? '<span class="s">' + esc(String(r.text).slice(0, 320)) + '</span>' : '') + '</div>').join('');
@@ -1023,17 +1092,20 @@
   scene.add(FZ.group);
   const FZ_LOOK = {
     odeg: { cars: 2, len: 24, low: '#f2c21b', up: '#f6f3e8' }, // ODEG: gelb-weiß
+    oebb: { cars: 3, len: 25, low: '#d71920', up: '#f3f3f1', stripe: '#6d7378' }, // ÖBB (Cityjet): weiß, rot und grau, symbolisch
+    postbus: { cars: 1, len: 12, low: '#f6c400', up: '#f6c400' }, // Postbus: gelb
     db: { cars: 3, len: 26, low: '#c4313a', up: '#f1f1ee' }, // DB Regio: rot-weiß
     ice: { cars: 5, len: 26, low: '#e3e5e8', up: '#f6f6f6', stripe: '#d5222b' }, // Fernverkehr: weiß mit rotem Streifen
     bus: { cars: 1, len: 12, low: '#1b7f93', up: '#e9eeee' }, // Bus: Farbe symbolisch
   };
   const fzLook = (ln) => {
     const op = String((ln.operator && ln.operator.name) || '');
-    if (ln.product === 'bus') return 'bus';
+    if (ln.product === 'bus') return /Postbus/i.test(op) ? 'postbus' : 'bus';
+    if (AT) return 'oebb';
     if (ln.product === 'express') return 'ice';
     return /ODEG|Ostdeutsche/i.test(op) ? 'odeg' : 'db';
   };
-  const FZ_ART = { odeg: 'Regionalbahn (ODEG)', db: 'Regionalzug (DB Regio)', ice: 'Fernverkehr', bus: 'Bus' };
+  const FZ_ART = { odeg: 'Regionalbahn (ODEG)', db: 'Regionalzug (DB Regio)', ice: 'Fernverkehr', bus: 'Bus', oebb: 'Zug (ÖBB)', postbus: 'Bus (Postbus)' };
   const fzGeo = { box: new THREE.BoxGeometry(1, 1, 1), wheel: new THREE.CylinderGeometry(0.55, 0.55, 0.42, 12).rotateX(Math.PI / 2) };
   const fzMat = {}, fzKit = {};
   const fzM = (c) => fzMat[c] || (fzMat[c] = new THREE.MeshLambertMaterial({ color: c }));
@@ -1318,7 +1390,7 @@
         if (now < t0 - 2000 || now > t1 + 2000) continue;
         const id = 'sim:' + ti + ':' + k; want.add(id);
         if (FZ.list.has(id)) continue;
-        const r = FA.routes[tr[0]], kind = r[1] === 'bus' || r[1] === 'sev' ? 'bus' : /ODEG|Ostdeutsche/i.test(r[2]) ? 'odeg' : 'db';
+        const r = FA.routes[tr[0]], kind = r[1] === 'bus' || r[1] === 'sev' ? (/Postbus/i.test(r[2]) ? 'postbus' : 'bus') : AT ? 'oebb' : /ODEG|Ostdeutsche/i.test(r[2]) ? 'odeg' : 'db';
         const pts = st.map((q) => ({ x: q[0], z: q[1], a: day0 + (q[2] - k * 86400) * 1000, d: day0 + (q[3] - k * 86400) * 1000 }));
         const x = pts[0].x, z = pts[0].z, g = fzModel(kind); g.visible = false; FZ.group.add(g);
         const m = addMarker('veh', '<b>' + esc(r[0]) + '</b>', x, 8, z, () => { const c = FZ.list.get(id); if (c) fzShow(c); }, null);
@@ -1425,14 +1497,14 @@
     const ew = ewText(o), inf = o.info || {};
     openCard('<h3>' + esc(o.n) + '</h3><p class="sub">Ortsteil: ' + esc(ART) + ' ' + esc(ORT_NAME) + '</p><dl>'
       + '<dt>Einwohner</dt><dd>' + (ew ? esc(ew) + '<span class="s">Angabe im Ortsporträt der Gemeinde</span>' : 'keine Angabe der Gemeinde') + '</dd>'
-      + '<dt>Fläche</dt><dd>' + km2(o) + ' km²<span class="s">nach der Grenze in OpenStreetMap</span></dd>' + (o.hn != null ? '<dt>Höhe</dt><dd>' + nfH(o.hn) + ' m über NHN<span class="s">in der Ortsmitte, Geländemodell</span></dd>' : '')
+      + '<dt>Fläche</dt><dd>' + km2(o) + ' km²<span class="s">nach der Grenze in OpenStreetMap</span></dd>' + (o.hn != null ? '<dt>Höhe</dt><dd>' + nfH(o.hn) + ' ' + HB + '<span class="s">in der Ortsmitte, Geländemodell</span></dd>' : '')
       + (inf.erstwaehnung ? '<dt>Erwähnt seit</dt><dd>' + inf.erstwaehnung + '</dd>' : '')
       + (inf.sehenswert && inf.sehenswert.length ? '<dt>Sehenswert</dt><dd>' + inf.sehenswert.map(esc).join(', ') + '<span class="s">laut Ortsporträt der Gemeinde</span></dd>' : '')
       + '<dt>Adressen</dt><dd>' + nA + '</dd><dt>Gebäude</dt><dd>' + o.nB + '</dd><dt>Bahnhof</dt><dd>' + (rail.length ? esc(rail[0].n) + ' (DB)' : 'keiner') + '</dd>'
       + '<dt>Bushaltepunkte</dt><dd>' + bus + '</dd><dt>Orte</dt><dd>' + PLACES.filter((p) => p.o === i).length + '</dd>'
       + (BRW && BRW_Z.some((q) => q.o === i) ? '<dt>Bodenrichtwert</dt><dd>' + BRW_Z.filter((q) => q.o === i).map((q) => '<b>' + esc(fmtW(q.w)) + '</b> <span class="s">' + esc(q.artDe) + '</span>').join('') + '<span class="s">Stichtag ' + esc(fmtIso(BRW.stichtag)) + ', Bauland</span></dd>' : '') + '</dl>'
       + (ORTSTEILE_SEITE ? '<a href="' + ORTSTEILE_SEITE + '" target="_blank" rel="noopener">Ortsporträt auf der Website von ' + esc(ORT_NAME) + ' →</a>' : '')
-      + sourceLine('Ortsporträts: Website der Gemeinde' + (M.ortsteilInfo && M.ortsteilInfo.gelesen ? ' (gelesen ' + fmtIso(M.ortsteilInfo.gelesen) + ')' : '') + '; Grenzen: OpenStreetMap; Adressen und Gebäude: LGB', ORTSTEILE_SEITE));
+      + sourceLine('Ortsporträts: Website der Gemeinde' + (M.ortsteilInfo && M.ortsteilInfo.gelesen ? ' (gelesen ' + fmtIso(M.ortsteilInfo.gelesen) + ')' : '') + '; Grenzen: OpenStreetMap; Adressen und Gebäude: ' + (AT ? 'BEV' : 'LGB') + 'B', ORTSTEILE_SEITE));
     flyTo({ tx: o.x, tz: o.z, dist: 1500, phi: 0.95 }, 1600);
   }
 
@@ -1446,6 +1518,8 @@
     if (S.panel === 'traffic') {
       trafficFill();
       if (window.ALL && ORT.baustellen) window.ALL.baustellen($('#bauBox'));
+      if (VO) voList($('#voBox'));
+      if (GEW_ITEMS.length) gewList($('#gewBox'));
       if (window.ALL && ORT.muell && !$('#muellBox').dataset.on) { $('#muellBox').dataset.on = '1'; window.ALL.muell($('#muellBox')); }
     }
   }
@@ -1570,7 +1644,7 @@
     qRes.hidden = true; qIn.value = STREETS[r[0]] + ' ' + r[1]; qIn.blur();
     flyTo({ tx: r[2], tz: r[3], dist: 140, phi: 0.95 }, 1500);
     if (r[7] >= 0) { S.pending = { key: r[5] + '_' + r[6], k: r[7] }; loadTile(S.pending.key); }
-    else { clearSel(); openCard('<h3>' + esc(STREETS[r[0]] + ' ' + r[1]) + '</h3><p class="sub">' + esc(otName(r[4])) + '</p><p class="note">Zu dieser Adresse gibt es kein Gebäudemodell in der Nähe.</p>' + sourceLine('LGB Brandenburg, Adressen (dl-de/by-2.0)', 'https://www.govdata.de/dl-de/by-2-0')); }
+    else { clearSel(); openCard('<h3>' + esc(STREETS[r[0]] + ' ' + r[1]) + '</h3><p class="sub">' + esc(otName(r[4])) + '</p><p class="note">Zu dieser Adresse gibt es kein Gebäudemodell in der Nähe.</p>' + sourceLine(ADR_SRC[0], ADR_SRC[1])); }
   }
   qIn.addEventListener('input', () => { if (!qIn.value.trim()) qOt = -1; searchRun(); });
   qIn.addEventListener('keydown', (e) => { if (e.key === 'Enter' && qItems[0]) { e.preventDefault(); qItems[0].a(); } if (e.key === 'Escape') { qRes.hidden = true; } });
@@ -1603,6 +1677,9 @@
     borders.visible = S.L.borders; brwGroup.visible = S.L.brw; updateLegend(); $('#sunShadows').checked = S.L.shadows; applySun(); S.moved = true; S.dirty = true;
   }
   if (!ORT.gelaende) { const rl = $('[data-layer=relief]'); if (rl && rl.closest('label')) rl.closest('label').hidden = true; } // Relief nur mit DGM (ort.json: bausteine.gelaende)
+  // Bausteine, die es für diesen Ort nicht gibt (ort.json), samt Schalter ausblenden: data-nur="brw|solar|vo|gew"
+  const NUR = { brw: !!BRW, solar: SOL_ON, vo: !!(VO && VO.items && VO.items.length), gew: !!(GEW && GEW.items && GEW.items.length) };
+  $$('[data-nur]').forEach((el) => { if (!NUR[el.dataset.nur]) el.hidden = true; });
   $$('[data-layer]').forEach((c) => {
     c.onchange = () => {
       S.L[c.dataset.layer] = c.checked;
@@ -1610,24 +1687,30 @@
       applyLayers();
     };
   });
+  const srcAt = (n) => (M.sources || []).find((q) => q.n === n) || {};
   $('#sourcesBody').innerHTML = '<ul>'
-    + '<li><b>Luftbild, Gebäude (3D, LoD2), Adressen:</b> © GeoBasis-DE/LGB, <a href="https://www.govdata.de/dl-de/by-2-0" target="_blank" rel="noopener">dl-de/by-2-0</a> (Daten geändert). Landesvermessung und Geobasisinformation Brandenburg. ' + M.nBuildings + ' Gebäude, ' + M.nAddr + ' Adressen, Stand ' + esc(M.stand) + '. Das Luftbild ist ein Abzug mit 1 bis 2 m je Bildpunkt, nicht das Original mit 20 cm.</li>'
+    + (AT ? '<li><b>Gebäude (3D, Blockmodell LoD1):</b> ' + esc(srcAt('Gebäude (Grundriss, Höhen)').by || 'BEV, DLM Bauwerke') + '. Grundriss und Höhen aus dem Digitalen Landschaftsmodell des <a href="https://www.bev.gv.at/Services/Produkte/Digitales-Landschaftsmodell/Bauwerke.html" target="_blank" rel="noopener">BEV</a> (Laserscan); die Gebäude stehen als Blöcke mit flachem Dach in der Höhe des Medians. Nutzung aus dem Adressregister (überwiegende Eigenschaft des Gebäudes laut Gebäude- und Wohnungsregister), kleine Bauwerke ohne Eintrag gelten als Nebengebäude. ' + M.nBuildings + ' Gebäude.</li>'
+      + '<li><b>Adressen:</b> ' + esc(srcAt('Adressen').by || '© Österreichisches Adressregister') + '. ' + M.nAddr + ' Adressen.</li>'
+      + '<li><b>Luftbild:</b> Datenquelle: <a href="https://basemap.at" target="_blank" rel="noopener">basemap.at</a> (Orthofoto), <a href="https://creativecommons.org/licenses/by/4.0/deed.de" target="_blank" rel="noopener">CC BY 4.0</a>. Abzug mit 1 bis 2 m je Bildpunkt; die Befliegungsjahre der Bundesländer unterscheiden sich.</li>' : '')
+    + (AT ? '' : '<li><b>Luftbild, Gebäude (3D, LoD2), Adressen:</b> © GeoBasis-DE/LGB, <a href="https://www.govdata.de/dl-de/by-2-0" target="_blank" rel="noopener">dl-de/by-2-0</a> (Daten geändert). Landesvermessung und Geobasisinformation Brandenburg. ' + M.nBuildings + ' Gebäude, ' + M.nAddr + ' Adressen, Stand ' + esc(M.stand) + '. Das Luftbild ist ein Abzug mit 1 bis 2 m je Bildpunkt, nicht das Original mit 20 cm.</li>')
     + '<li><b>Straßen, Orte, Haltestellen, Flächen, Grenzen, Öffnungszeiten:</b> © OpenStreetMap-Mitwirkende, <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">ODbL</a>. Öffnungszeiten stammen aus OSM und können veraltet sein.</li>'
     + (BRW ? '<li><b>Bodenrichtwerte:</b> BORIS Brandenburg (Gutachterausschuss, bereitgestellt vom LGB), © GeoBasis-DE/LGB, <a href="https://www.govdata.de/dl-de/by-2-0" target="_blank" rel="noopener">dl-de/by-2-0</a> (Daten geändert), Stichtag ' + esc(fmtIso(BRW.stichtag)) + '. Zone und Werte wie veröffentlicht, nur Euro je m². Ein Bodenrichtwert ist ein durchschnittlicher Lagewert und kein Verkehrswert. Maßgeblich ist die amtliche Auskunft (<a href="https://boris.brandenburg.de" target="_blank" rel="noopener">BORIS Brandenburg</a>).</li>' : '')
     + '<li><b>Bäume:</b> symbolisch. Sie werden in Waldflächen zufällig verteilt und zeigen keine echten Einzelbäume.</li>'
-    + '<li><b>Geländehöhen und Relief:</b> Digitales Geländemodell (DGM) der LGB, © GeoBasis-DE/LGB, <a href="https://www.govdata.de/dl-de/by-2-0" target="_blank" rel="noopener">dl-de/by-2-0</a> (Daten geändert), auf 10 m gemittelt. Die Höhen (Meter über NHN) gelten für die Mitte des Gebäudes, Ortes oder Ortsteils. Das Relief ist stark überhöht (Faktor 6) und nur eine Schummerung auf dem Luftbild, das Gelände selbst bleibt flach.</li>'
-    + '<li><b>Dachfarbe und Solar-Eignung:</b> Die Dachfarbe ist der mittlere Farbton des Dachs im Luftbild (© GeoBasis-DE/LGB, dl-de/by-2-0, Daten geändert). Schatten, Bäume und die Schrägsicht des Luftbilds verfälschen einzelne Dächer. Die Solar-Eignung rechnet aus Neigung und Ausrichtung der LoD2-Dachflächen die Strahlung relativ zur besten Lage (Süd, 35 Grad). Nutzbar sind 75 % einer geneigten und 50 % einer flachen Fläche bei 0,21 kWp je m², ' + SOL_KWH + ' kWh je kWp und Jahr bei bester Ausrichtung. Keine Verschattung, keine Statik, kein Denkmalschutz, keine Anlagenplanung: grobe Schätzung ohne Gewähr.</li>'
-    + '<li><b>Besonnung und Schatten:</b> Schätzung ohne Gewähr. Berücksichtigt nur Gebäude aus LoD2, keine Bäume, kein Gelände.</li>'
+    + '<li><b>Geländehöhen und Relief:</b> ' + (AT ? 'ALS-Höhenraster (Geländemodell aus dem Laserscan) des <a href="https://www.bev.gv.at" target="_blank" rel="noopener">BEV</a>, CC BY 4.0 (Daten geändert)' : 'Digitales Geländemodell (DGM) der LGB, © GeoBasis-DE/LGB, <a href="https://www.govdata.de/dl-de/by-2-0" target="_blank" rel="noopener">dl-de/by-2-0</a> (Daten geändert)') + ', auf 10 m gemittelt. Die Höhen (' + HB + ') gelten für die Mitte des Gebäudes, Ortes oder Ortsteils. Das Relief ist stark überhöht (Faktor 6) und nur eine Schummerung auf dem Luftbild, das Gelände selbst bleibt flach.</li>'
+    + '<li><b>Dachfarbe' + (SOL_ON ? ' und Solar-Eignung' : '') + ':</b> Die Dachfarbe ist der mittlere Farbton des Dachs im Luftbild (' + (AT ? 'basemap.at, CC BY 4.0' : '© GeoBasis-DE/LGB, dl-de/by-2-0') + ', Daten geändert). Schatten, Bäume und die Schrägsicht des Luftbilds verfälschen einzelne Dächer.' + (SOL_ON ? ' Die Solar-Eignung rechnet aus Neigung und Ausrichtung der LoD2-Dachflächen die Strahlung relativ zur besten Lage (Süd, 35 Grad). Nutzbar sind 75 % einer geneigten und 50 % einer flachen Fläche bei 0,21 kWp je m², ' + SOL_KWH + ' kWh je kWp und Jahr bei bester Ausrichtung. Keine Verschattung, keine Statik, kein Denkmalschutz, keine Anlagenplanung: grobe Schätzung ohne Gewähr.' : '') + '</li>'
+    + '<li><b>Besonnung und Schatten:</b> Schätzung ohne Gewähr. Berücksichtigt nur die Gebäude des Modells' + (AT ? ' (Blöcke mit flachem Dach)' : ' (LoD2)') + ', keine Bäume, kein Gelände.</li>'
     + '<li><b>Fahrpläne (Bus und Bahn):</b> Sollfahrplan: ' + esc(ORT.betreiber || '') + ', <a href="' + esc(ORT.lizenzUrl || '#') + '" target="_blank" rel="noopener">' + esc(ORT.lizenz || '') + '</a>, ' + (FP ? 'Stand ' + esc(FP.stand) + ', gültig ' + esc(fmtYmd(FP.feedFrom)) + ' bis ' + esc(fmtYmd(FP.feedTo)) : 'nicht geladen') + '. Auf die Haltestellen des Gebiets gefiltert (Daten geändert). Ohne Gewähr.</li>'
     + '<li><b>Veranstaltungen:</b> ' + (((window.AL_EVENTS_AUTO || {}).quellen || []).length ? esc(window.AL_EVENTS_AUTO.quellen.join(', ')) : 'von Hand gepflegt (events.js)') + ((window.AL_EVENTS_AUTO || {}).stand ? ' (gelesen am ' + esc(fmtIso(window.AL_EVENTS_AUTO.stand)) + ')' : '') + '. Übernommen werden nur Titel, Datum, Uhrzeit und Ort mit Link zur Originalseite.</li>'
     + '<li><b>Öffnungszeiten und Kontakt der Orte:</b> aus OpenStreetMap, ergänzt durch den Wortlaut der eigenen Webseite des Ortes, wo dort maschinell lesbar vorhanden (mit Lesedatum und Link in der Ortskarte). Ohne Angabe steht „nicht verifiziert“. Zeiten ändern sich, bitte beim Betrieb nachfragen.</li>'
     + '<li><b>Schriften:</b> Sora und JetBrains Mono, SIL Open Font License 1.1, lokal eingebunden.</li>'
-    + '<li><b>Wetter (nur auf Wunsch):</b> Deutscher Wetterdienst (DWD, offene Daten nach GeoNutzV) über die freie Schnittstelle <a href="https://brightsky.dev" target="_blank" rel="noopener">Bright Sky</a>. Der Browser ruft die Daten erst nach Ihrer Zustimmung direkt dort ab. Dazu gehören die amtlichen Wetterwarnungen des DWD. Die Wolkenebene auf der Karte ist eine Veranschaulichung: Sie folgt dem gemeldeten Bedeckungsgrad und der Windrichtung, zieht im Zeitraffer und zeigt keine echten Wolkenformen.</li>'
+    + '<li><b>Wetter (nur auf Wunsch):</b> ' + (AT ? 'Messwerte der Wetterstation ' + esc((window.ALW && window.ALW.stationName) || ORT_NAME) + ' und amtliche Wetterwarnungen von <a href="https://data.hub.geosphere.at" target="_blank" rel="noopener">GeoSphere Austria</a> (CC BY 4.0), Vorhersage und Bewölkung aus Wettermodellen über <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0). Der Browser ruft die Daten erst nach Ihrer Zustimmung direkt dort ab.' : 'Deutscher Wetterdienst (DWD, offene Daten nach GeoNutzV) über die freie Schnittstelle <a href="https://brightsky.dev" target="_blank" rel="noopener">Bright Sky</a>. Der Browser ruft die Daten erst nach Ihrer Zustimmung direkt dort ab. Dazu gehören die amtlichen Wetterwarnungen des DWD.') + ' Die Wolkenebene auf der Karte ist eine Veranschaulichung: Sie folgt dem gemeldeten Bedeckungsgrad und der Windrichtung, zieht im Zeitraffer und zeigt keine echten Wolkenformen.</li>'
     + '<li><b>Luftqualität (nur auf Wunsch):</b> Modelldaten des Copernicus-Dienstes CAMS über <a href="https://open-meteo.com/en/docs/air-quality-api" target="_blank" rel="noopener">Open-Meteo</a>, CC BY 4.0, keine Messung vor Ort. Abruf erst nach Ihrer Zustimmung direkt aus dem Browser.</li>'
     + (ORT.baustellen ? '<li><b>Baustellen und Sperrungen (nur auf Wunsch):</b> © Landesbetrieb Straßenwesen Brandenburg, <a href="https://www.govdata.de/dl-de/by-2-0" target="_blank" rel="noopener">dl-de/by-2.0</a>, über den Geodienst isk.geobasis-bb.de. Abruf erst nach Ihrer Zustimmung direkt aus dem Browser.</li>' : '')
     + (VBB_HOSTS.length ? '<li><b>Live-Abfahrten und Meldungen Bahn und Bus (nur auf Wunsch):</b> Echtzeitdaten (Abfahrten, Meldungen, Fahrzeugpositionen für die bewegten Fahrzeugmodelle; die Modelle sind Miniaturen nach Betreiber, die Wagenzahl ist angenommen) über die freien, inoffiziellen Schnittstellen ' + esc(VBB_HOSTS.map((h) => h.replace('https://', '')).join(' und ')) + ' (<a href="https://github.com/public-transport/transport.rest" target="_blank" rel="noopener">transport.rest</a>). Abruf erst nach Ihrer Zustimmung direkt aus dem Browser. Ohne Gewähr.</li>' : '')
+    + (VO ? '<li><b>Verordnungen:</b> Verkehrsverordnungen der Bezirkshauptmannschaft und Verordnungen der Gemeinde aus dem Open-Data-Katalog <a href="https://www.data.gv.at" target="_blank" rel="noopener">data.gv.at</a> (CC BY 4.0), Stand ' + esc(fmtIso(VO.stand)) + ', letzte ' + VO.monate + ' Monate. Übernommen werden Titel, Kurztext und Datum mit Verweis auf das amtliche Dokument. Der Punkt auf der Karte steht in der Mitte der Adressen der zuerst genannten Straße und ist eine Orientierung, nicht der genaue Geltungsbereich.</li>' : '')
+    + (GEW ? '<li><b>Gewässer und Grundwasser:</b> Lage und Namen der Messstellen des <a href="' + esc(GEW.seite) + '" target="_blank" rel="noopener">Hydrographischen Dienstes Niederösterreich</a> im Umkreis von ' + GEW.radius + ' km, Stand ' + esc(fmtIso(GEW.stand)) + '. Messwerte und Warnstufen zeigt nur die Seite des Landes; die Karte verlinkt dorthin.</li>' : '')
     + (ORT.muell ? '<li><b>Müllabfuhr (nur auf Wunsch):</b> eingebettete Abfuhrabfrage: <a href="' + esc(ORT.muell.seite || ORT.muell.url) + '" target="_blank" rel="noopener">' + esc(ORT.muell.name) + '</a>. Die Termine stammen von dort und werden hier nicht gespeichert.' + (ORT.muell.hinweis ? ' ' + esc(ORT.muell.hinweis) : '') + '</li>' : '')
-    + '<li><b>Aktualisierung:</b> Orte, Haltestellen und Fahrplan wöchentlich' + (NEWS.stand ? ' (letzter Lauf ' + esc(fmtIso(NEWS.stand)) + ')' : '') + ', Gebäude und Adressen vierteljährlich, Bodenrichtwerte jährlich.</li>'
+    + '<li><b>Aktualisierung:</b> Orte, Haltestellen und Fahrplan wöchentlich' + (NEWS.stand ? ' (letzter Lauf ' + esc(fmtIso(NEWS.stand)) + ')' : '') + ', Gebäude und Adressen vierteljährlich' + (BRW ? ', Bodenrichtwerte jährlich' : '') + (VO ? ', Verordnungen wöchentlich' : '') + '.</li>'
     + (ORTSTEILE_SEITE ? '<li><b>Ortsinformationen (Einwohnerzahl, Ersterwähnung, Sehenswertes):</b> Ortsporträts auf der <a href="' + ORTSTEILE_SEITE + '" target="_blank" rel="noopener">Website: ' + esc(ORT_NAME) + '</a>' + (M.ortsteilInfo && M.ortsteilInfo.gelesen ? ' (gelesen am ' + esc(fmtIso(M.ortsteilInfo.gelesen)) + ')' : '') + '. Übernommen werden nur einzelne Angaben, keine Texte und keine Personen. Einwohnerzahlen sind Angaben aus den Texten ohne einheitlichen Stand, bei ' + OT.filter((o) => !ewText(o)).length + ' von ' + OT.length + ' Ortsteilen fehlt sie. Fläche, Adress- und Gebäudezahl stammen aus eigenen Daten (Grenze: OpenStreetMap, Adressen und Gebäude: LGB).</li>' : '')
     + '<li><b>3D-Darstellung:</b> three.js (MIT-Lizenz), läuft lokal im Browser, es werden keine Daten an Dritte gesendet.</li></ul><p class="note">Prototyp. Keine Gewähr für Richtigkeit und Vollständigkeit.</p>';
 
@@ -1666,7 +1749,7 @@
     const st = window.AL_STAND, el = $('#stand');
     if (!st || !el) return;
     el.textContent = 'Daten: ' + fmtIso(st.lauf);
-    el.title = 'Orte und Haltestellen ' + fmtIso(st.osm) + ' · Fahrplan gültig ' + fmtIso(st.fahrplan.von) + ' bis ' + fmtIso(st.fahrplan.bis) + ' · Termine ' + fmtIso(st.termine.stand) + ' · Gebäude und Adressen (LGB) abgerufen ' + fmtIso(st.lgb);
+    el.title = 'Orte und Haltestellen ' + fmtIso(st.osm) + ' · Fahrplan gültig ' + fmtIso(st.fahrplan.von) + ' bis ' + fmtIso(st.fahrplan.bis) + ' · Termine ' + fmtIso(st.termine.stand) + (AT && st.stichtage ? ' · Gebäude (BEV) Stichtag ' + fmtIso(st.stichtage['Gebäude (Grundriss, Höhen)']) + ' · Adressen Stichtag ' + fmtIso(st.stichtage.Adressen) : ' · Gebäude und Adressen (LGB) abgerufen ' + fmtIso(st.lgb));
   })();
   (function sprungZumOrtsteil() { // Links der Startseite: karte.html#ortsteil=<Nummer>
     const m = /ortsteil=(\d+)/.exec(location.hash);

@@ -4,9 +4,9 @@
   var sec = document.getElementById('wetter'), now = document.getElementById('wxNow');
   if (!A || !sec) return;
   sec.hidden = false;
-  var HINT = 'Dafür verbindet sich Ihr Browser mit <b>api.brightsky.dev</b>, einer freien Schnittstelle auf den offenen Daten des Deutschen Wetterdienstes. Dabei wird Ihre IP-Adresse an diesen Dienst übertragen. Ohne Ihre Zustimmung findet keine Verbindung statt. Mehr in der <a href="datenschutz.html">Datenschutzerklärung</a>.';
+  var HINT = 'Dafür verbindet sich Ihr Browser mit <b>' + A.dienst.hosts + '</b> (' + A.dienst.wer + '). Dabei wird Ihre IP-Adresse an diesen Dienst übertragen. Ohne Ihre Zustimmung findet keine Verbindung statt. Mehr in der <a href="datenschutz.html">Datenschutzerklärung</a>.';
   if (!A.consent) {
-    now.innerHTML = '<div><div class="t" style="font-size:22px">Wetter in der Gemeinde</div><small>Aktuelle Werte, Vorhersage und amtliche Warnungen vom DWD, dazu passt sich die Seite dem Wetter an.</small></div>';
+    now.innerHTML = '<div><div class="t" style="font-size:22px">Wetter in der Gemeinde</div><small>Aktuelle Werte, Vorhersage und amtliche Warnungen (' + A.dienst.kurz + '), dazu passt sich die Seite dem Wetter an.</small></div>';
     document.getElementById('wxStrip').innerHTML = '<button class="btn" id="wxOk" type="button">Wetter einblenden</button>';
     document.getElementById('wxSrc').innerHTML = HINT;
     document.getElementById('wxOk').onclick = function () { A.giveConsent(); };

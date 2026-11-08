@@ -26,6 +26,8 @@ Live im Browser (nur nach Klick „Live-Daten laden“):
 | Bahn live | `v6.oebb.transport.rest` (inoffiziell, HAFAS der ÖBB) | ohne Zusage; Haltestellen werden über den Namen gesucht |
 | Müllabfuhr | eingebettete Seite des Abfallverbands (Laa: GAUL) | Seite setzt Cookies, eigener Schalter |
 
+Bausteine der Vorlage, die in Österreich laufen: `notfall` (OSM), `touren` (OSM), `ortsgeschichte` (Wikipedia), Hangneigung und Senken (aus dem Gelände), `drohnenhinweis` (verweist in Österreich auf Dronespace der Austro Control). Nur für Deutschland und daher für Laa aus: `landwirtschaft`, `klima`, `webcam` (DWD), `waldbrand`, `baustellen`, `bodenrichtwerte` (Brandenburg). `ort_pruefen.py` meldet einen Fehler, wenn einer davon eingeschaltet ist.
+
 ## Was es in Österreich nicht gibt oder anders ist
 
 - **Dachformen (LoD2):** Das DLM liefert Grundrisse mit Höhen, keine Dächer. Die Gebäude stehen als Blöcke (LoD1) in der Höhe des Medians der Laserscan-Punkte; die Gesamthöhe ist der höchste Punkt. Darum ist die Solar-Schätzung ausgeschaltet (`solar_kwh_je_kwp: null`).
@@ -38,7 +40,7 @@ Live im Browser (nur nach Klick „Live-Daten laden“):
 ## Einrichten
 
 ```
-pip install pillow numpy rasterio pyogrio
+pip install -r requirements.txt
 python scripts/ort_pruefen.py
 python scripts/erstaufbau.py
 ```

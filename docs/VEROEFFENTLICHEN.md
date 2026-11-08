@@ -13,6 +13,10 @@ Die Seite in `site/` ist rein statisch (HTML, JavaScript, Datendateien, Luftbild
 
 Empfohlen ist **B**. Das mitgelieferte `scripts/veroeffentlichen.bat` lädt per WinSCP (SFTP) hoch.
 
+## GitHub Pages (ein Klick)
+
+`.github/workflows/pages.yml` baut die Seite auf GitHub (`scripts/ci_bauen.py`: Erstaufbau, wenn noch nichts im Cache liegt oder der Stand älter als ein Quartal ist, sonst Wochenlauf) und veröffentlicht `site/` auf GitHub Pages. Einmalig unter *Settings → Pages* als Quelle **GitHub Actions** wählen, dann unter *Actions* den Workflow „Karte bauen und veröffentlichen“ starten. Er läuft danach wöchentlich und nach Änderungen an Vorlage, Skripten oder `ort.json`. Bricht ein Erstaufbau ab (z. B. Overpass überlastet), setzt der nächste Lauf mit den schon geladenen Dateien fort. Optionale Zugangsdaten (Busse in Österreich: `MVO_USER`, `MVO_PASSWORD`) als *Repository secrets* anlegen, nie in Dateien.
+
 ## Hochladen mit WinSCP einrichten
 
 1. Beim Hoster eine Subdomain anlegen, HTTPS einschalten und einen SFTP-Zugang einrichten.
@@ -24,7 +28,7 @@ Empfohlen ist **B**. Das mitgelieferte `scripts/veroeffentlichen.bat` lädt per 
 
 ## Impressum und Datenschutz (Pflicht für Betreiber)
 
-Die Vorlage bringt keine Texte mit. Wer die Seite betreibt, braucht in Deutschland ein Impressum und eine Datenschutzerklärung. Die Adressen kommen in `ort.json` unter `veroeffentlichung.impressum_url` und `datenschutz_url` (vollständige https-Adressen, etwa auf der eigenen Homepage). Die Fußzeile zeigt die Links dann an. Die Datenschutzerklärung muss die Abrufe aus dem Browser nennen, die erst nach Klick des Besuchers stattfinden (Schalter „Live-Daten laden“ und Einzelschalter): `api.brightsky.dev`, `air-quality-api.open-meteo.com`, `isk.geobasis-bb.de` (nur bei `bausteine.baustellen`), die in `fahrplan.live_hosts` eingetragenen Dienste und, falls eingetragen, die eingebettete Müllabfuhr-Abfrage (sie setzt oft ein Cookie). Die Seiten gehen mit einer Inhaltsrichtlinie (CSP als `meta`-Tag) hinaus, die `baue_seiten.py` aus `ort.json` erzeugt; ein neuer Dienst muss dort eingetragen werden, sonst blockiert ihn der Browser. Die Rechtsprüfung liegt bei dir.
+Die Vorlage bringt keine Texte mit. Wer die Seite betreibt, braucht in Deutschland ein Impressum und eine Datenschutzerklärung. Die Adressen kommen in `ort.json` unter `veroeffentlichung.impressum_url` und `datenschutz_url` (vollständige https-Adressen, etwa auf der eigenen Homepage). Die Fußzeile zeigt die Links dann an. Die Datenschutzerklärung muss die Abrufe aus dem Browser nennen, die erst nach Klick des Besuchers stattfinden (Schalter „Live-Daten laden“ und Einzelschalter): `api.brightsky.dev`, `air-quality-api.open-meteo.com`, `isk.geobasis-bb.de` (nur bei `bausteine.baustellen`), die in `fahrplan.live_hosts` eingetragenen Dienste, bei einer Webcam der Bilderserver des DWD (`opendata.dwd.de`) und, falls eingetragen, die eingebettete Müllabfuhr-Abfrage (sie setzt oft ein Cookie). Die Seiten gehen mit einer Inhaltsrichtlinie (CSP als `meta`-Tag) hinaus, die `baue_seiten.py` aus `ort.json` erzeugt; ein neuer Dienst muss dort eingetragen werden, sonst blockiert ihn der Browser. Die Rechtsprüfung liegt bei dir.
 
 ## Wochenlauf
 
@@ -36,6 +40,10 @@ Die Vorlage bringt keine Texte mit. Wer die Seite betreibt, braucht in Deutschla
 4. Mit dem letzten Stand vergleichen und die Neuigkeiten schreiben.
 
 **Achtung:** Jeder Fahrplan-Feed hat ein Ende. Ohne Wochenlauf zeigt die Seite danach „keine Daten“, und `pruefe_veroeffentlichung.py` bricht das Veröffentlichen ab.
+
+Täglich (`scripts/taeglich.bat`): Waldbrandstufe und Bodenfeuchte, danach `versionieren.py` und, wenn `data/state/auto-veroeffentlichen.on` existiert, das Hochladen. Die Seite zeigt die Waldbrandstufe nur, wenn sie nicht älter als 36 Stunden ist; fällt der tägliche Lauf aus, verschwindet die Stufe und ein Verweis auf die amtliche Seite bleibt. Einplanen wie den Wochenlauf, nur mit `/SC DAILY /ST 08:30`.
+
+Selten (einmal im Jahr oder bei Bedarf): Klima (`fetch_klima.py`) und Ortsgeschichte (`fetch_ortsgeschichte.py`, Zweifelsfälle landen in `data/ergaenzung/ortsgeschichte_pruefen.json` und werden nicht angezeigt; eigene Artikeltitel in `data/ergaenzung/ortsgeschichte_titel.json`).
 
 Nicht wöchentlich: Gebäude und Adressen vierteljährlich (`python scripts/fetch.py addr lod2`, danach `prepare_gemeinde.py`), Bodenrichtwerte jährlich nach dem Stichtag (`fetch_boris.py`, `prepare_brw.py`).
 

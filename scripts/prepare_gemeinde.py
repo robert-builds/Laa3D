@@ -1,6 +1,7 @@
 """Bereitet die Rohdaten der Gemeinde fuer die Seite auf (nur Standardbibliothek).
 
 Eingabe : data/raw/gemeinde/{cells,boundary,ortsteile_geom,street_names}.json, lod2/, addr/, osm/
+          Oesterreich (ort.json land.staat = "AT"): data/raw/gemeinde/at/{bauwerke,adressen}.json (scripts/fetch_at.py)
 Ausgabe : site/data/meta.js   Grenze, Ortsteile, Orte, Haltestellen, Kachelliste
           site/data/addr.js   Adressindex fuer die Suche
           site/data/areas.js  Flaechen fuer die Kartenansicht ohne Luftbild
@@ -12,13 +13,13 @@ import json, math, os, random, re, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from geo import CELL, GEMEINDE_SCHLUESSEL, LAT0, LON0, NB_BBOX, NB_CENTER, NB_NAME, ORT, in_nb, pip, simplify, stitch, utm33_to_latlon, xz  # noqa: E402
-from geom3d import triangulate  # noqa: E402  (Ear-Clipping fuer 3D-Polygone)
+from geo import CELL, GEMEINDE_SCHLUESSEL, LAT0, LON0, NB_BBOX, NB_CENTER, NB_NAME, ORT, STAAT, in_nb, pip, simplify, stitch, utm33_to_latlon, xz  # noqa: E402
+from geom3d import triangulate, triangulate_holes  # noqa: E402  (Ear-Clipping fuer 3D-Polygone, ebene Polygone mit Loechern)
 
 ROOT = os.path.dirname(HERE)
 RAW = os.path.join(ROOT, "data", "raw", "gemeinde")
 OUT = os.path.join(ROOT, "site", "data")
-STAND = "2026-10-31"
+STAND = __import__("datetime").date.today().isoformat()
 sys.stdout.reconfigure(encoding="utf-8")
 random.seed(20261031)
 
@@ -78,8 +79,11 @@ for rel in jload(os.path.join(RAW, "ortsteile_geom.json"))["elements"]:
     if not rs:
         continue
     cxz = centroid(rs[0])
+    if not in_gemeinde(*cxz):  # Nachbar-Ortsteile, die nur die Grenze teilen, kommen in der Abfrage mit
+        continue
     xs = [p[0] for p in rs[0]]; zs = [p[1] for p in rs[0]]
-    OT.append({"n": rel["tags"]["name"], "rings": rs, "c": cxz, "bb": (min(xs), min(zs), max(xs), max(zs))})
+    t = rel["tags"]  # Oesterreich: Katastralgemeinden heissen "Katastralgemeinde X", official_name ist X
+    OT.append({"n": t.get("official_name") or t["name"], "rings": rs, "c": cxz, "bb": (min(xs), min(zs), max(xs), max(zs))})
 OT.sort(key=lambda o: o["n"])
 
 
@@ -160,6 +164,118 @@ def parse_buildings():
     out.sort(key=lambda b: b["id"])
     print("Gebaeude:", len(out))
     return out
+
+
+# ------------------------------------------------------------------ Gebaeude Oesterreich (BEV, DLM Bauwerke: Grundriss und Hoehen, LoD1)
+def parse_buildings_at():
+    """Bloecke aus Grundriss und mittlerer Objekthoehe (aus dem Laserscan, ALS). Flache Daecher: das DLM kennt keine Dachform."""
+    d = jload(os.path.join(RAW, "at", "bauwerke.json"))
+    adr = jload(os.path.join(RAW, "at", "adressen.json"))
+    use_of = {g["obj"]: g for g in adr["gebaeude"]}
+    out = []
+    for bw in d["bauwerke"]:
+        for pi, poly in enumerate(bw["p"]):
+            rings = [[xz(a, b) for a, b in r] for r in poly]
+            rings = [r[:-1] if len(r) > 1 and r[0] == r[-1] else r for r in rings]
+            outer, holes = rings[0], [h for h in rings[1:] if len(h) >= 3]
+            if len(outer) < 3:
+                continue
+            fl = area_of(outer) - sum(area_of(h) for h in holes)
+            if fl < 4:
+                continue
+            cx, cz = centroid(outer)
+            if cell_of(cx, cz) not in KEPT or not in_gemeinde(cx, cz):
+                continue
+            g = use_of.get(bw.get("agwr") or "")
+            u = (g and g["u"]) or ("neben" if fl < 60 else "unbekannt")
+            h = bw.get("ho") or bw.get("hx")
+            est = not h or h < 2
+            if est:
+                h = 3.0 if fl < 60 else 6.0  # ohne Hoehe im DLM (neues Gebaeude): Annahme, auf der Seite gekennzeichnet
+            hx = max(h, bw.get("hx") or h)
+            wv, wi, rv, ri = [], [], [], []
+            for r in [outer] + holes:  # Waende: je Kante ein Rechteck mit eigenen Punkten (kantige Schattierung)
+                for k in range(len(r)):
+                    (x1, z1), (x2, z2) = r[k], r[(k + 1) % len(r)]
+                    if x1 == x2 and z1 == z2:
+                        continue
+                    b0 = len(wv) // 3
+                    for x, y, z in ((x1, 0, z1), (x2, 0, z2), (x2, h, z2), (x1, h, z1)):
+                        wv += [round(x - cx, 2), round(y, 2), round(z - cz, 2)]
+                    wi += [b0, b0 + 1, b0 + 2, b0, b0 + 2, b0 + 3]
+            pts, tris = triangulate_holes(outer, holes)
+            for x, z in pts:
+                rv += [round(x - cx, 2), round(h, 2), round(z - cz, 2)]
+            for a, b, c in tris:
+                ri += [a, b, c]
+            xs = [p[0] for p in outer]; zs = [p[1] for p in outer]
+            o = {"id": bw["id"] + ("" if pi == 0 else "_%d" % pi), "u": u, "h": round(h, 2), "t": round(hx, 2), "x": round(cx, 2), "z": round(cz, 2),
+                 "wv": wv, "wi": wi, "rv": rv, "ri": ri, "o": ot_of(cx, cz), "_bb": (min(xs), min(zs), max(xs), max(zs)), "_roof": [outer], "a": [],
+                 "_agwr": bw.get("agwr"), "fl": round(fl)}
+            if bw.get("hb") is not None:
+                o["hn"] = round(bw["hb"], 1)  # Gelaendehoehe am Gebaeude laut DLM (Meter ueber Adria)
+            if est:
+                o["he"] = 1
+            if g and g.get("f"):
+                o["fn"] = g["f"]
+            out.append(o)
+    out.sort(key=lambda b: b["id"])
+    print("Gebaeude (DLM Bauwerke, Stichtag %s): %d" % (d.get("stichtag"), len(out)))
+    return out
+
+
+def parse_addresses_at(buildings):
+    """Adressen aus dem Adressregister. Zuordnung zum Gebaeude ueber die Objektnummer (AGWR), sonst Punkt im Grundriss, sonst naechstes Gebaeude bis 14 m."""
+    d = jload(os.path.join(RAW, "at", "adressen.json"))
+    by_agwr = {}
+    for k, b in enumerate(buildings):
+        if b.get("_agwr"):
+            by_agwr.setdefault(b["_agwr"], k)
+    adr_bld = {}
+    for g in d["gebaeude"]:
+        if g["obj"] in by_agwr:
+            for a in g["a"]:
+                adr_bld.setdefault(a, by_agwr[g["obj"]])
+    grid = {}
+    for k, b in enumerate(buildings):
+        x0, z0, x1, z1 = b["_bb"]
+        for gx in range(int(x0 // 40), int(x1 // 40) + 1):
+            for gz in range(int(z0 // 40), int(z1 // 40) + 1):
+                grid.setdefault((gx, gz), []).append(k)
+    rows, nomatch = [], 0
+    for adrcd, a in d["adressen"].items():
+        x, z = xz(a["lat"], a["lon"])
+        if not in_gemeinde(x, z) or not a["n"]:
+            continue
+        hit = adr_bld.get(adrcd, -1)
+        if hit < 0:
+            for k in grid.get((int(x // 40), int(z // 40)), []):
+                b = buildings[k]; bb = b["_bb"]
+                if bb[0] - 0.5 <= x <= bb[2] + 0.5 and bb[1] - 0.5 <= z <= bb[3] + 0.5 and any(pip(x, z, r) for r in b["_roof"]):
+                    hit = k
+                    break
+        if hit < 0:
+            best = 14.0
+            for gx in (int(x // 40) - 1, int(x // 40), int(x // 40) + 1):
+                for gz in (int(z // 40) - 1, int(z // 40), int(z // 40) + 1):
+                    for k in grid.get((gx, gz), []):
+                        bb = buildings[k]["_bb"]
+                        dist = math.hypot(max(bb[0] - x, 0, x - bb[2]), max(bb[1] - z, 0, z - bb[3]))
+                        if dist < best:
+                            best, hit = dist, k
+        if hit < 0:
+            nomatch += 1
+        rows.append({"s": a["s"], "n": a["n"].replace(" ", ""), "x": x, "z": z, "k": hit, "o": ot_of(x, z)})
+    streets = sorted({r["s"] for r in rows}, key=natkey)
+    sidx = {s: i for i, s in enumerate(streets)}
+    rows.sort(key=lambda r: (natkey(r["s"]), natkey(r["n"]), r["o"]))
+    for r in rows:
+        if r["k"] >= 0:
+            buildings[r["k"]]["a"].append([sidx[r["s"]], r["n"]])
+    for b in buildings:
+        b.pop("_agwr", None)
+    print("Adressen (Adressregister, Stichtag %s): %d, davon ohne Gebaeude: %d, Strassen: %d" % (d.get("stand"), len(rows), nomatch, len(streets)))
+    return streets, sidx, rows
 
 
 # ------------------------------------------------------------------ Adressen
@@ -454,10 +570,30 @@ def split_lines(lines):
     return per
 
 
+def quellen():
+    """Quellenangaben fuer die Seite (meta.js): Daten des Landes bzw. des BEV und OpenStreetMap."""
+    osm = {"n": "Straßen, Orte, Haltestellen, Flächen", "by": "© OpenStreetMap-Mitwirkende, ODbL", "url": "https://www.openstreetmap.org/copyright"}
+    if STAAT != "AT":
+        return [{"n": "Luftbild, Gebäude (LoD2), Adressen", "by": "© GeoBasis-DE/LGB, dl-de/by-2-0 (Daten geändert)", "url": "https://www.govdata.de/dl-de/by-2-0"}, osm]
+    bw = jload(os.path.join(RAW, "at", "bauwerke.json"))
+    ad = jload(os.path.join(RAW, "at", "adressen.json"))
+    dmy = lambda s: ".".join(reversed(s.split("-"))) if s else "?"
+    return [
+        {"n": "Gebäude (Grundriss, Höhen)", "by": "© BEV, Digitales Landschaftsmodell – Bauwerke, Stichtag %s, CC BY 4.0 (Daten geändert)" % dmy(bw.get("stichtag")), "url": "https://www.bev.gv.at/Services/Produkte/Digitales-Landschaftsmodell/Bauwerke.html", "stichtag": bw.get("stichtag")},
+        {"n": "Adressen", "by": "© Österreichisches Adressregister, Stichtagsdaten vom %s" % dmy(ad.get("stand")), "url": "https://www.bev.gv.at/Services/Produkte/Adressregister/Oesterreichisches-Adressregister.html", "stichtag": ad.get("stand")},
+        {"n": "Luftbild", "by": "Datenquelle: basemap.at, CC BY 4.0", "url": "https://basemap.at"},
+        osm,
+    ]
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
-    buildings = parse_buildings()
-    streets, sidx, rows = parse_addresses(buildings)
+    if STAAT == "AT":
+        buildings = parse_buildings_at()
+        streets, sidx, rows = parse_addresses_at(buildings)
+    else:
+        buildings = parse_buildings()
+        streets, sidx, rows = parse_addresses(buildings)
     # Beschriftungspunkt je Ortsteil: Mitte der Adresspunkte (der Polygonschwerpunkt liegt oft im Wald)
     byot = {}
     for r in rows:
@@ -576,10 +712,7 @@ def main():
         "pois": sorted(R["pois"], key=lambda p: p["n"].lower()), "stops": R["stops"],
         "stand": STAND, "nBuildings": sum(1 for b in buildings if not b.get("nb")), "nAddr": len(rows),
         "nb": ({"n": NB_NAME, "bbox": list(NB_BBOX), "x": round(xz(*NB_CENTER)[0], 1), "z": round(xz(*NB_CENTER)[1], 1), "nBuildings": sum(1 for b in buildings if b.get("nb")), "nPois": sum(1 for p in R["pois"] if p.get("nb"))} if NB_NAME else None),
-        "sources": [
-            {"n": "Luftbild, Gebäude (LoD2), Adressen", "by": "© GeoBasis-DE/LGB, dl-de/by-2-0 (Daten geändert)", "url": "https://www.govdata.de/dl-de/by-2-0"},
-            {"n": "Straßen, Orte, Haltestellen, Flächen", "by": "© OpenStreetMap-Mitwirkende, ODbL", "url": "https://www.openstreetmap.org/copyright"},
-        ],
+        "sources": quellen(),
     }
     with open(os.path.join(OUT, "meta.js"), "w", encoding="utf-8") as f:
         f.write("window.AL_TILES={};window.AL_META=%s;\n" % dump(meta))

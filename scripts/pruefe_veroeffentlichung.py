@@ -46,7 +46,7 @@ vo = ORT.get("veroeffentlichung", {})
 for key, fn in (("impressum_url", "Impressum"), ("datenschutz_url", "Datenschutzerklaerung")):
     v = (vo.get(key) or "").strip()
     if not v:
-        warn.append("%s nicht eingetragen (ort.json, veroeffentlichung.%s). Wer die Seite betreibt, braucht in Deutschland Impressum und Datenschutzerklaerung." % (fn, key))
+        warn.append("%s nicht eingetragen (ort.json, veroeffentlichung.%s). Wer die Seite betreibt, braucht Impressum (Oesterreich: auch Offenlegung) und Datenschutzerklaerung." % (fn, key))
     elif not re.match(r"https?://", v):
         fehler.append("ort.json: %s ist keine gueltige https-Adresse: %s" % (key, v))
 if not os.path.exists(os.path.join(SITE, "img", "vorschau.jpg")):

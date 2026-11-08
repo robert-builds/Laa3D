@@ -11,8 +11,8 @@
     chip.innerHTML = A.svg('cloudy', 16) + '<span>Wetter</span>';
     chip.setAttribute('aria-label', 'Wetter einblenden');
     pop.innerHTML = '<div class="big"><span style="font-size:20px">Wetter einblenden?</span></div>'
-      + '<p>Aktuelle Werte, Vorhersage, amtliche Warnungen und Regen- oder Schneeeffekte auf der Karte, Daten vom Deutschen Wetterdienst.</p>'
-      + '<p>Dafür verbindet sich Ihr Browser mit <b>api.brightsky.dev</b> (freie Schnittstelle auf DWD-Daten). Dabei wird Ihre IP-Adresse an diesen Dienst übertragen. Ohne Zustimmung findet keine Verbindung statt. Mehr in der <a href="datenschutz.html" target="_blank" rel="noopener">Datenschutzerklärung</a>.</p>'
+      + '<p>Aktuelle Werte, Vorhersage, amtliche Warnungen und Regen- oder Schneeeffekte auf der Karte, Daten von ' + A.dienst.wer + '.</p>'
+      + '<p>Dafür verbindet sich Ihr Browser mit <b>' + A.dienst.hosts + '</b>. Dabei wird Ihre IP-Adresse an diesen Dienst übertragen. Ohne Zustimmung findet keine Verbindung statt. Mehr in der <a href="datenschutz.html" target="_blank" rel="noopener">Datenschutzerklärung</a>.</p>'
       + '<p><button class="wxbtn" id="wxOkK" type="button">Wetter einblenden</button></p>';
   } else {
     chip.innerHTML = A.svg(W.icon, 16) + '<span>' + A.temp(W.temp) + '</span>';

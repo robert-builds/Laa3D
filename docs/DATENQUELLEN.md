@@ -12,7 +12,10 @@ Stand 08.11.2026. **Grundsatz:** Auf die Karte kommen nur Daten und Funktionen m
 | Solar-Eignung | im Browser aus den LoD2-Dachflächen gerechnet | wie LoD2 | wo LoD2 vorliegt |
 | Bodenrichtwerte | BORIS Brandenburg | dl-de/by-2-0 | Brandenburg |
 | Straßen, Orte, Haltestellen, Grenzen, Öffnungszeiten | OpenStreetMap über Overpass | ODbL | überall |
-| Fahrplan (Sollfahrplan, Fahrten) | GTFS-Feed des Verkehrsverbunds | im Beispiel VBB, CC BY 4.0 | je Feed, in `ort.json` |
+| Fahrplan (Sollfahrplan, Fahrten) | GTFS-Feed des Verkehrsverbunds | VBB bzw. ÖBB, CC BY 4.0 | je Feed, in `ort.json` |
+| Gebäude (LoD1), Adressen, Luftbild, Gelände | BEV (DLM Bauwerke, Adressregister, ALS-Höhenraster), basemap.at | CC BY 4.0 bzw. Nutzungsbedingungen Adressregister | Österreich (`land.staat = "AT"`), Einzelheiten in `docs/OESTERREICH.md` |
+| Verordnungen | data.gv.at | CC BY 4.0 | Österreich (`bausteine.verordnungen`) |
+| Gewässer-Messstellen (Name, Lage, Verweis) | Hydrographischer Dienst NÖ | nur Verweis, keine Messwerte | Niederösterreich (`bausteine.gewaesser`) |
 
 ## Live-Daten im Browser (nur nach Klick, ein gemeinsamer Schalter)
 
@@ -24,6 +27,8 @@ Kein Betreiber-Abruf, nichts im Wochenlauf. Der Schalter „Live-Daten laden“ 
 | Luftqualität | `air-quality-api.open-meteo.com` (Copernicus CAMS) | CC BY 4.0, nur nichtkommerzielle Nutzung ohne Schlüssel; Modellrechnung, **keine Messung vor Ort** |
 | Baustellen und Sperrungen | `isk.geobasis-bb.de` (Landesbetrieb Straßenwesen) | dl-de/by-2-0, **nur Brandenburg** (`bausteine.baustellen`) |
 | Bahn und Bus live, Fahrzeugpositionen | freie `transport.rest`-Instanzen (HAFAS) | inoffiziell, ohne Zusage; Instanzen in `fahrplan.live_hosts` |
+| Wetter Österreich | `dataset.api.hub.geosphere.at`, `warnungen.zamg.at` (GeoSphere Austria), `api.open-meteo.com` | CC BY 4.0; Messstation und amtliche Warnungen, Vorhersage aus Modellen |
+| Bahn live Österreich | `v6.oebb.transport.rest` | inoffiziell, ohne Zusage |
 | Müllabfuhr | eingebettete Abfuhrabfrage des Entsorgers | Sache des Entsorgers, setzt oft ein Cookie; eigener Schalter; `bausteine.muellabfuhr` |
 
 Die Inhaltsrichtlinie (CSP) der Seiten wird in `scripts/baue_seiten.py` aus genau diesen Einstellungen erzeugt: Verbindungen gehen nur zu den Diensten, die `ort.json` einschaltet. Wer einen weiteren Dienst anbindet, trägt ihn dort ein, sonst blockiert der Browser ihn.
@@ -36,7 +41,9 @@ Die Inhaltsrichtlinie (CSP) der Seiten wird in `scripts/baue_seiten.py` aus gena
 | Flugzeuge am Flugplatz (ADS-B) | die frei nutzbaren Dienste lassen Abrufe aus dem Browser nicht zu (CORS); ein Betreiber-Abruf widerspräche dem Grundsatz |
 | Mietspiegel, Mietkarte | für Gemeinden meist kein amtlicher Bestand; Portale sind nicht amtlich |
 | Vorschau fremder Webseiten beim Überfahren | Nachladen fremder Seiten widerspräche dem Grundsatz und scheitert an Einbettungsverboten |
-| Stromstörungen, Pegel | keine offene Schnittstelle mit CORS belegt |
+| Stromstörungen, Pegel | keine offene Schnittstelle mit CORS belegt. Österreich: Die Karte zeigt die Messstellen des Landes NÖ mit Verweis, aber keine Werte |
+| Bodenrichtwerte Österreich | kein offener amtlicher Bestand |
+| Abflussvorhersage aus GloFAS (Open-Meteo Flood) | Rasterzelle bei Laa trifft nicht die Thaya, Werte nicht belastbar |
 
 ## Annahmen der Einfärbungen
 

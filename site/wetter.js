@@ -1,10 +1,12 @@
-/* Wetter des Deutschen Wetterdienstes (DWD) fuer Startseite und Karte.
+/* Wetter fuer Startseite und Karte: Deutschland ueber den Deutschen Wetterdienst (DWD, Bright Sky), Oesterreich (ort.json land.staat = "AT")
+   ueber GeoSphere Austria (Messwerte der Wetterstation, amtliche Warnungen) und Open-Meteo (Vorhersage und Bewoelkung aus Wettermodellen).
    Die Daten kommen aus dem Browser des Besuchers von der freien DWD-Schnittstelle Bright Sky (api.brightsky.dev), und zwar nur nach
    ausdruecklicher Einwilligung (Schalter "Wetter einblenden", gemerkt im Browser, jederzeit widerrufbar). Ohne Einwilligung findet
    KEINE Verbindung zu Dritten statt. Eigene Dateien oder ein Betreiber-Abruf sind nicht noetig. */
 (function () {
   'use strict';
   var API = 'https://api.brightsky.dev', LAT = ((window.ORT || {}).wetter || [51.95, 12.95])[0], LON = ((window.ORT || {}).wetter || [51.95, 12.95])[1];
+  var O = window.ORT || {}, AT = O.staat === 'AT', TZ = O.zeitzone || 'Europe/Berlin';
   var queue = [], done = false, consent = false;
   try { consent = localStorage.getItem('alw-ok') === 'ja'; } catch (e) { /* ohne Speicher: keine Einwilligung merkbar */ }
   window.AL_WETTER = null;
@@ -12,7 +14,11 @@
     ready: function (fn) { if (done) fn(window.ALW); else queue.push(fn); },
     consent: consent,
     giveConsent: function () { try { localStorage.setItem('alw-ok', 'ja'); } catch (e) { /* egal */ } location.reload(); },
-    revoke: function () { try { localStorage.removeItem('alw-ok'); sessionStorage.removeItem('alw-cache2'); } catch (e) { /* egal */ } location.reload(); }
+    revoke: function () { try { localStorage.removeItem('alw-ok'); sessionStorage.removeItem('alw-cache2'); } catch (e) { /* egal */ } location.reload(); },
+    // Fuer die Einwilligungstexte (wetter-karte.js, start_wetter.js, live-alle.js): wohin sich der Browser verbindet und wer die Daten liefert
+    dienst: AT ? { hosts: 'dataset.api.hub.geosphere.at, warnungen.zamg.at und api.open-meteo.com', wer: 'GeoSphere Austria (Messwerte und amtliche Warnungen) und Open-Meteo (Vorhersage)', kurz: 'GeoSphere Austria' }
+      : { hosts: 'api.brightsky.dev', wer: 'freie Schnittstelle Bright Sky auf den offenen Daten des Deutschen Wetterdienstes', kurz: 'DWD' },
+    stationName: O.wetterStationName || ''
   };
   function finish() { init(); done = true; queue.splice(0).forEach(function (fn) { try { fn(window.ALW); } catch (e) { /* ein Fehler im Wetter darf die Seite nicht stoeren */ } }); }
   function getJson(u) { // nach 12 s aufgeben, statt die Seite warten zu lassen
@@ -32,13 +38,63 @@
       quelle: 'Deutscher Wetterdienst (DWD), über Bright Sky', quelleUrl: 'https://www.dwd.de/DE/leistungen/opendata/opendata.html'
     };
   }
+  // ------------------------------------------------------------ Oesterreich: GeoSphere Austria und Open-Meteo
+  var WMO = function (c, day) { // WMO-Wettercode (Open-Meteo) -> Symbolname wie bei Bright Sky
+    if (c <= 1) return day ? 'clear-day' : 'clear-night';
+    if (c === 2) return day ? 'partly-cloudy-day' : 'partly-cloudy-night';
+    if (c === 3) return 'cloudy';
+    if (c === 45 || c === 48) return 'fog';
+    if (c === 56 || c === 57 || c === 66 || c === 67) return 'sleet';
+    if ((c >= 71 && c <= 77) || c === 85 || c === 86) return 'snow';
+    if (c >= 95) return 'thunderstorm';
+    return 'rain'; // 51-55, 61-65, 80-82
+  };
+  var GSA_TYP = { 1: 'Sturm', 2: 'Regen', 3: 'Schnee', 4: 'Glatteis', 5: 'Gewitter', 6: 'Hitze', 7: 'Kälte' }, GSA_STUFE = { 1: 'minor', 2: 'moderate', 3: 'severe' };
+  function loadAt() {
+    var om = 'https://api.open-meteo.com/v1/forecast?latitude=' + LAT + '&longitude=' + LON + '&timeformat=unixtime&timezone=GMT&forecast_hours=30'
+      + '&current=temperature_2m,relative_humidity_2m,precipitation,weather_code,cloud_cover,wind_speed_10m,wind_direction_10m,wind_gusts_10m,is_day'
+      + '&hourly=temperature_2m,precipitation,precipitation_probability,weather_code,cloud_cover,is_day';
+    var st = O.wetterStation ? 'https://dataset.api.hub.geosphere.at/v1/station/current/tawes-v1-10min?parameters=TL,RF,FF,FFX,DD,RR&station_ids=' + encodeURIComponent(O.wetterStation) : null;
+    var wa = 'https://warnungen.zamg.at/wsapp/api/getWarningsForCoords?lon=' + LON + '&lat=' + LAT + '&lang=de';
+    Promise.all([getJson(om)['catch'](function () { return null; }), st ? getJson(st)['catch'](function () { return null; }) : Promise.resolve(null), getJson(wa)['catch'](function () { return null; })]).then(function (r) {
+      var m = null, mt = null;
+      try { var f = r[1].features[0].properties.parameters; mt = r[1].timestamps[0]; m = {}; Object.keys(f).forEach(function (k) { m[k] = f[k].data[0]; }); } catch (e) { m = null; }
+      if (!r[0] && !m) throw new Error('keine Wetterdaten');
+      var c = r[0] ? r[0].current : {}, h = r[0] ? r[0].hourly : { time: [] }; // ohne Open-Meteo (z. B. überlastet): nur die Messwerte der Station
+      var ms = function (v) { return v == null ? null : v * 3.6; };
+      var fc = [];
+      for (var i = 0; i < h.time.length; i++) fc.push({ t: new Date(h.time[i] * 1000).toISOString(), temp: h.temperature_2m[i], icon: WMO(h.weather_code[i], h.is_day[i]), regen: h.precipitation[i], wahrsch: h.precipitation_probability[i], wolken: h.cloud_cover[i] });
+      var W = {
+        stand: new Date().toISOString(), messung: m && mt ? new Date(mt.replace(/\+00:00$/, 'Z')).toISOString() : new Date((c.time || Date.now() / 1000) * 1000).toISOString(),
+        temp: m && m.TL != null ? m.TL : c.temperature_2m, wind: m && m.FF != null ? ms(m.FF) : c.wind_speed_10m, boe: m && m.FFX != null ? ms(m.FFX) : c.wind_gusts_10m,
+        wolken: c.cloud_cover, windrichtung: m && m.DD != null ? m.DD : c.wind_direction_10m, regen60: c.precipitation, feuchte: m && m.RF != null ? Math.round(m.RF) : c.relative_humidity_2m,
+        sicht: null, icon: r[0] ? WMO(c.weather_code, c.is_day) : (m && m.RR > 0 ? 'rain' : 'station'), bedingung: null,
+        stationen: m ? [(O.wetterStationName || 'Station ' + O.wetterStation) + ' (GeoSphere Austria)'] : [],
+        vorhersage: fc.filter(function (x, k) { return k % 3 === 0; }).slice(0, 9),
+        quelle: m && r[0] ? 'GeoSphere Austria (Messung) und Open-Meteo (Vorhersage)' : m ? 'GeoSphere Austria (Messung)' : 'Open-Meteo (Wettermodell)', quelleUrl: m ? 'https://data.hub.geosphere.at' : 'https://open-meteo.com',
+        modell: !m
+      };
+      W.warn = r[2] && r[2].properties ? (r[2].properties.warnings || []).map(function (w) {
+        var p = w.properties || {}, ri = p.rawinfo || {};
+        return { stufe: GSA_STUFE[ri.wlevel] || 'minor', ereignis: GSA_TYP[ri.wtype] || '', titel: p.text, text: p.meteotext || p.auswirkungen, hinweis: p.empfehlungen,
+          ab: ri.start ? new Date(Number(ri.start) * 1000).toISOString() : null, bis: ri.end ? new Date(Number(ri.end) * 1000).toISOString() : null };
+      }) : null;
+      window.AL_WETTER = W;
+      try { sessionStorage.setItem('alw-cache2', JSON.stringify({ t: Date.now(), d: W })); } catch (e) { /* egal */ }
+      finish();
+    })['catch'](function () { window.AL_WETTER = null; finish(); });
+  }
   function load() {
     if (!consent || !window.fetch) { finish(); return; }
+    if (AT) {
+      try { var cc = JSON.parse(sessionStorage.getItem('alw-cache2') || 'null'); if (cc && Date.now() - cc.t < 600000) { window.AL_WETTER = cc.d; finish(); return; } } catch (e) { /* kein Cache */ }
+      loadAt(); return;
+    }
     try { var c = JSON.parse(sessionStorage.getItem('alw-cache2') || 'null'); if (c && Date.now() - c.t < 600000) { window.AL_WETTER = c.d; finish(); return; } } catch (e) { /* kein Cache */ }
     var start = new Date(Math.floor(Date.now() / 3600000) * 3600000), end = new Date(start.getTime() + 30 * 3600000);
     var iso = function (d) { return d.toISOString().slice(0, 16); };
     Promise.all([getJson(API + '/current_weather?lat=' + LAT + '&lon=' + LON), getJson(API + '/weather?lat=' + LAT + '&lon=' + LON + '&date=' + iso(start) + '&last_date=' + iso(end)),
-      getJson(API + '/alerts?lat=' + LAT + '&lon=' + LON + '&tz=Europe/Berlin')['catch'](function () { return null; })])
+      getJson(API + '/alerts?lat=' + LAT + '&lon=' + LON + '&tz=' + TZ)['catch'](function () { return null; })])
       .then(function (r) {
         window.AL_WETTER = build(r[0], r[1]);
         // Warnungen: null = Abruf fehlgeschlagen (nicht als "keine Warnung" zeigen), [] = keine Warnung
@@ -64,9 +120,9 @@
     'fog': '<path d="M4 14.9A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.24"/><path d="M16 17H7M17 21H9"/>',
     'storm': '<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>'
   };
-  var TXT = { 'clear-day': 'klar', 'clear-night': 'klar', 'partly-cloudy-day': 'wolkig', 'partly-cloudy-night': 'wolkig', cloudy: 'bedeckt', fog: 'Nebel', wind: 'windig',
+  var TXT = { station: 'gemessen', 'clear-day': 'klar', 'clear-night': 'klar', 'partly-cloudy-day': 'wolkig', 'partly-cloudy-night': 'wolkig', cloudy: 'bedeckt', fog: 'Nebel', wind: 'windig',
     rain: 'Regen', sleet: 'Schneeregen', snow: 'Schnee', hail: 'Hagel', thunderstorm: 'Gewitter' };
-  var KIND = { 'clear-day': 'sun', 'clear-night': 'night', 'partly-cloudy-day': 'cloud', 'partly-cloudy-night': 'night', cloudy: 'cloud', fog: 'fog', wind: 'cloud',
+  var KIND = { station: 'cloud', 'clear-day': 'sun', 'clear-night': 'night', 'partly-cloudy-day': 'cloud', 'partly-cloudy-night': 'night', cloudy: 'cloud', fog: 'fog', wind: 'cloud',
     rain: 'rain', sleet: 'rain', snow: 'snow', hail: 'snow', thunderstorm: 'storm' };
   function glyph(icon) {
     if (icon === 'partly-cloudy-day' || icon === 'partly-cloudy-night') return P.partly;
@@ -81,8 +137,8 @@
   }
   var nf = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 0 });
   function temp(t) { return nf.format(Math.round(t)).replace('-', '−') + ' °C'; }
-  function hhmm(iso) { return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' }); }
-  function dayShort(iso) { return new Date(iso).toLocaleDateString('de-DE', { weekday: 'short', timeZone: 'Europe/Berlin' }); }
+  function hhmm(iso) { return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: TZ }); }
+  function dayShort(iso) { return new Date(iso).toLocaleDateString('de-DE', { weekday: 'short', timeZone: TZ }); }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
   var kind = fresh ? (KIND[W.icon] || 'cloud') : null;
@@ -92,7 +148,7 @@
   api.data = W; api.fresh = fresh; api.kind = kind; api.svg = svg; api.text = function (i) { return TXT[i] || ''; }; api.temp = temp; api.hhmm = hhmm;
 
   api.summary = function () { return fresh ? TXT[W.icon] + ', ' + temp(W.temp) : ''; };
-  api.stand = function () { return W ? 'Stand ' + hhmm(W.stand) + ' Uhr, ' + new Date(W.stand).toLocaleDateString('de-DE', { day: 'numeric', month: 'numeric', timeZone: 'Europe/Berlin' }) : ''; };
+  api.stand = function () { return W ? 'Stand ' + hhmm(W.stand) + ' Uhr, ' + new Date(W.stand).toLocaleDateString('de-DE', { day: 'numeric', month: 'numeric', timeZone: TZ }) : ''; };
   api.details = function () {
     if (!fresh) return '';
     var l = [];
@@ -103,14 +159,15 @@
     return l.join(' · ');
   };
   // Amtliche DWD-Warnungen fuer die Gemeinde (Warnzelle laut Bright Sky). null = nicht abrufbar.
-  var STUFE = { minor: ['Wetterwarnung', 1], moderate: ['Markante Wetterwarnung', 2], severe: ['Unwetterwarnung', 3], extreme: ['Extreme Unwetterwarnung', 4] };
+  var STUFE = AT ? { minor: ['Warnstufe Gelb', 1], moderate: ['Warnstufe Orange', 2], severe: ['Warnstufe Rot', 3] } // GeoSphere Austria: drei Stufen
+    : { minor: ['Wetterwarnung', 1], moderate: ['Markante Wetterwarnung', 2], severe: ['Unwetterwarnung', 3], extreme: ['Extreme Unwetterwarnung', 4] };
   api.warnings = function () {
     if (!fresh || !W.warn) return null;
     var now = Date.now();
     return W.warn.filter(function (a) { return !a.bis || Date.parse(a.bis) > now; }).sort(function (a, b) { return (STUFE[b.stufe] || [0, 0])[1] - (STUFE[a.stufe] || [0, 0])[1]; });
   };
   api.warnLevel = function () { var l = api.warnings(); return l && l.length ? (STUFE[l[0].stufe] || [0, 1])[1] : 0; };
-  function dt(iso) { return new Date(iso).toLocaleString('de-DE', { weekday: 'short', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' }); }
+  function dt(iso) { return new Date(iso).toLocaleString('de-DE', { weekday: 'short', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: TZ }); }
   api.warnHtml = function (full) {
     var l = api.warnings();
     if (l === null) return fresh ? '<p class="note">Warnungen zurzeit nicht abrufbar.</p>' : '';
@@ -131,6 +188,8 @@
     }).join('');
   };
   api.sourceHtml = function () {
+    if (AT) return 'Quelle: Messwerte ' + (W.stationen && W.stationen.length ? 'der Wetterstation ' + esc(W.stationen.join(', ')) + ', ' + hhmm(W.messung) + ' Uhr' : 'nicht abrufbar, Werte aus dem Wettermodell')
+      + ', <a href="https://data.hub.geosphere.at" target="_blank" rel="noopener">GeoSphere Austria</a>, CC BY 4.0; ' + (W.vorhersage && W.vorhersage.length ? 'Vorhersage und Bewölkung: <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a>, CC BY 4.0' : 'Vorhersage zurzeit nicht abrufbar') + '. Ohne Gewähr.';
     return 'Quelle: <a href="' + esc(W.quelleUrl) + '" target="_blank" rel="noopener">' + esc(W.quelle) + '</a>, Messung ' + hhmm(W.messung) + ' Uhr' + (W.stationen && W.stationen.length ? ' (Station ' + esc(W.stationen.join(', ')) + ')' : '') + '. Ohne Gewähr.';
   };
 

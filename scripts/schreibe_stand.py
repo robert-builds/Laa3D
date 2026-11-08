@@ -32,7 +32,9 @@ def main():
     news = js(os.path.join(SITE, "news.js"), "window.AL_NEWS")
     fp = js(os.path.join(SITE, "fahrplan.js"), "window.AL_FAHRPLAN")
     ev = js(os.path.join(SITE, "events_auto.js"), "window.AL_EVENTS_AUTO")
-    brw = js(os.path.join(SITE, "brw.js"), "window.AL_BRW")
+    bp = os.path.join(SITE, "brw.js")
+    brw = (js(bp, "window.AL_BRW") if os.path.exists(bp) else None) or {}  # Bodenrichtwerte gibt es nur fuer Brandenburg
+    stichtage = {q["n"]: q.get("stichtag") for q in meta.get("sources", []) if q.get("stichtag")}  # Oesterreich: Stichtage der BEV-Daten
     iso = lambda s: "%s-%s-%s" % (s[:4], s[4:6], s[6:8])
     out = {
         "lauf": news["stand"],
@@ -42,6 +44,7 @@ def main():
         "ortsteilInfo": (meta.get("ortsteilInfo") or {}).get("gelesen"),
         "brw": brw.get("stichtag"),
         "lgb": lgb_abruf(),
+        "stichtage": stichtage,
         "adressen": meta["nAddr"], "gebaeude": meta["nBuildings"], "orte": sum(1 for p in meta["pois"] if not p.get("nb")), "haltestellen": sum(1 for s in meta["stops"] if not s.get("nb")),
         "orteNb": sum(1 for p in meta["pois"] if p.get("nb")),
         "neu": len(news.get("items", [])),

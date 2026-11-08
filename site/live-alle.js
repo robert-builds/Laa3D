@@ -38,7 +38,8 @@
       dlg.innerHTML = '<h2 id="lgdT">Live-Daten sind an</h2><p>' + esc(liste) + ' werden direkt aus Ihrem Browser abgerufen.</p>'
         + '<div class="lgbtns"><button type="button" class="wxbtn" data-aus>Live-Daten ausschalten</button><button type="button" class="btn ghost" data-zu>Schließen</button></div>';
     } else {
-      var li = '<li><b>Wetter und amtliche Warnungen</b><small>api.brightsky.dev (Deutscher Wetterdienst)</small></li><li><b>Luftqualität</b><small>air-quality-api.open-meteo.com</small></li>';
+      var D = (window.ALW && window.ALW.dienst) || { hosts: 'api.brightsky.dev', kurz: 'DWD' };
+      var li = '<li><b>Wetter und amtliche Warnungen</b><small>' + esc(D.hosts) + ' (' + esc(D.kurz) + ')</small></li><li><b>Luftqualität</b><small>air-quality-api.open-meteo.com</small></li>';
       if (O.baustellen) li += '<li><b>Baustellen und Sperrungen</b><small>isk.geobasis-bb.de (Land Brandenburg)</small></li>';
       if (HOSTS.length) li += '<li><b>Bahn und Bus, Fahrzeuge auf der Karte</b><small>' + esc(HOSTS.map(function (h) { return h.replace('https://', ''); }).join(' oder ')) + '</small></li>';
       dlg.innerHTML = '<h2 id="lgdT">Live-Daten laden</h2><p>Mit einem Klick werden diese Daten <b>direkt von Ihrem Browser</b> bei den Diensten abgerufen. Dabei wird Ihre IP-Adresse an den jeweiligen Dienst übertragen. Ohne Ihre Zustimmung findet keine Verbindung statt.</p>'

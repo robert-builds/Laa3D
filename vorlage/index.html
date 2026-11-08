@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de">
+<html lang="{{LANG}}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -64,7 +64,7 @@
     <div class="sec-head">
       <div class="kicker">Live</div>
       <h2>Aktuelle Lage</h2>
-      <p>Warnungen, Luft, Baustellen und Störungen. Die Live-Daten werden erst nach Ihrem Klick direkt von den jeweiligen Stellen geholt.</p>
+      <p>{{LAGE_TEXT}} Die Live-Daten werden erst nach Ihrem Klick direkt von den jeweiligen Stellen geholt.</p>
     </div>
     <div class="lage-grid">
       <article class="lage-card" id="lageLuft"></article>
@@ -80,7 +80,7 @@
     </div>
     <div class="cards">
       <article class="card3"><svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"></path><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"></path><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"></path></svg>
-        <h3>Gebäude in 3D</h3><p>Rund <b id="nGeb">9.000</b> Gebäude mit Dachformen auf dem aktuellen Luftbild. Einfärben nach Nutzung, Höhe oder Bodenrichtwert.</p></article>
+        <h3>Gebäude in 3D</h3><p>Rund <b id="nGeb">9.000</b> Gebäude {{GEB_TEXT}}</p></article>
       <article class="card3"><svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
         <h3>Adresssuche</h3><p>Straße und Hausnummer eingeben, die Kamera fliegt hin. Ein Klick auf ein Haus zeigt die Adresse und die Sonne dort.</p></article>
       <article class="card3"><svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"></path><circle cx="12" cy="10" r="3"></circle></svg>
@@ -90,7 +90,7 @@
       <article class="card3"><svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><rect width="16" height="16" x="4" y="3" rx="2"></rect><path d="M4 11h16"></path><path d="M12 3v8"></path><path d="m8 19-2 3"></path><path d="m18 22-2-3"></path><path d="M8 15h.01"></path><path d="M16 15h.01"></path></svg>
         <h3>Haltestellen und Fahrplan</h3><p><b id="nHalt">70</b> Haltestellen mit dem Sollfahrplan ({{BETREIBER_KURZ}}) für den gewählten Tag, auf Wunsch mit Live-Abfahrten.</p></article>
       <article class="card3"><svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path></svg>
-        <h3>Sonne und Schatten</h3><p>Tag und Uhrzeit ziehen, Sonnenstand und Schattenwurf der Häuser folgen. Besonnung je Gebäude als Schätzung.</p></article>
+        <h3>Sonne und Schatten</h3><p>Tag und Uhrzeit ziehen, Sonnenstand und Schattenwurf der Häuser folgen. Besonnung je Gebäude als Schätzung.</p></article>{{HTML_KARTEN}}
     </div>
   </section>
 
@@ -99,7 +99,7 @@
       <div>
         <div class="kicker">Letzte Aktualisierung</div>
         <div class="big" id="standLauf">…</div>
-        <p class="note">Die Daten werden jede Woche automatisch neu gelesen. Gebäude, Adressen und Bodenrichtwerte ändern sich seltener und werden nur bei neuen Veröffentlichungen der Landesvermessung nachgezogen.</p>
+        <p class="note">Die Daten werden jede Woche automatisch neu gelesen. {{STAND_TEXT}}</p>
       </div>
       <dl class="st-grid" id="standGrid"></dl>
     </div>
@@ -124,7 +124,7 @@
 </main>
 
 <footer class="foot">
-  <p>© GeoBasis-DE/LGB, dl-de/by-2-0 (Daten geändert) · © OpenStreetMap-Mitwirkende, ODbL · Fahrplan: {{BETREIBER}}, {{FAHRPLAN_LIZENZ}}. Die Einzelheiten stehen in der Karte unter „Quellen“.</p>
+  <p>{{GEO_QUELLE}} · © OpenStreetMap-Mitwirkende, ODbL · Fahrplan: {{BETREIBER}}, {{FAHRPLAN_LIZENZ}}. Die Einzelheiten stehen in der Karte unter „Quellen“.</p>
   <p class="links"><a href="karte.html">Karte</a><span id="legal"></span></p>
 </footer>
 

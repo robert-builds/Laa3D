@@ -25,7 +25,9 @@ M_LAT = 111132.0
 M_LON = 111320.0 * math.cos(math.radians(LAT0))
 CELL = float(_G["kachel_m"])  # Kantenlaenge einer Kachel in Metern
 GEMEINDE_RELATION = int(_G["osm_relation"])  # OSM-Relation der Gemeindegrenze
-GEMEINDE_SCHLUESSEL = str(_G["gemeindeschluessel"])  # amtlicher Gemeindeschluessel (ARS)
+GEMEINDE_SCHLUESSEL = str(_G["gemeindeschluessel"])  # amtlicher Gemeindeschluessel (DE: AGS, 8 Stellen; AT: Gemeindekennziffer, 5 Stellen)
+STAAT = (ORT.get("land") or {}).get("staat", "DE")  # "DE" oder "AT": waehlt die Geodienste (Brandenburg bzw. Oesterreich)
+OT_ADMIN_LEVEL = int(_G.get("ortsteile_admin_level", 9))  # OSM-Ebene der Ortsteile (Brandenburg 9, Oesterreich: Katastralgemeinden 10)
 ORT_NAME = ORT["name"]
 UMGRENZUNG = tuple(_G["umgrenzung_sued_west_nord_ost"])  # grobe Umgrenzung fuer Abfragen (Sued, West, Nord, Ost)
 
@@ -84,6 +86,82 @@ def latlon_to_utm33(lat, lon):
     xi = xi_p + sum(alpha[j] * math.sin(2 * (j + 1) * xi_p) * math.cosh(2 * (j + 1) * eta_p) for j in range(3))
     eta = eta_p + sum(alpha[j] * math.cos(2 * (j + 1) * xi_p) * math.sinh(2 * (j + 1) * eta_p) for j in range(3))
     return 500000.0 + k0 * A * eta, k0 * A * xi
+
+
+# ------------------------------------------------------------------ Oesterreich: MGI (Gauss-Krueger) und ETRS89-LAEA (EPSG:3035)
+_BESSEL = (6377397.155, 1 / 299.1528128)
+_GRS80 = (6378137.0, 1 / 298.257222101)
+_MGI_L0 = {31254: 10 + 1 / 3, 31255: 13 + 1 / 3, 31256: 16 + 1 / 3}  # MGI / Austria GK West, Central, East
+
+
+def _tm_inverse(E, N, lon0, a, f, fn=0.0):
+    n = f / (2 - f)
+    A = a / (1 + n) * (1 + n ** 2 / 4 + n ** 4 / 64)
+    beta = [n / 2 - 2 * n ** 2 / 3 + 37 * n ** 3 / 96, n ** 2 / 48 + n ** 3 / 15, 17 * n ** 3 / 480]
+    delta = [2 * n - 2 * n ** 2 / 3 - 2 * n ** 3, 7 * n ** 2 / 3 - 8 * n ** 3 / 5, 56 * n ** 3 / 15]
+    xi, eta = (N - fn) / A, E / A
+    xi_p = xi - sum(beta[j] * math.sin(2 * (j + 1) * xi) * math.cosh(2 * (j + 1) * eta) for j in range(3))
+    eta_p = eta - sum(beta[j] * math.cos(2 * (j + 1) * xi) * math.sinh(2 * (j + 1) * eta) for j in range(3))
+    chi = math.asin(math.sin(xi_p) / math.cosh(eta_p))
+    return chi + sum(delta[j] * math.sin(2 * (j + 1) * chi) for j in range(3)), math.radians(lon0) + math.atan2(math.sinh(eta_p), math.cos(xi_p))
+
+
+def _ecef(lat, lon, a, f):
+    e2 = f * (2 - f)
+    N = a / math.sqrt(1 - e2 * math.sin(lat) ** 2)
+    return N * math.cos(lat) * math.cos(lon), N * math.cos(lat) * math.sin(lon), N * (1 - e2) * math.sin(lat)
+
+
+def _geodetic(X, Y, Z, a, f):
+    e2 = f * (2 - f)
+    p, lon = math.hypot(X, Y), math.atan2(Y, X)
+    lat = math.atan2(Z, p * (1 - e2))
+    for _ in range(6):
+        lat = math.atan2(Z + e2 * a / math.sqrt(1 - e2 * math.sin(lat) ** 2) * math.sin(lat), p)
+    return lat, lon
+
+
+def mgi_to_latlon(E, N, epsg):
+    """MGI / Austria GK (EPSG 31254, 31255, 31256) -> WGS84/ETRS89 in Grad.
+    Datumsuebergang mit den 7 Parametern des BEV (MGI -> ETRS89), Abweichung im Bereich weniger Dezimeter;
+    fuer die Karte genau genug (geprueft gegen PROJ, Abweichung unter 1 mm zur PROJ-Standardumrechnung)."""
+    lat, lon = _tm_inverse(E, N, _MGI_L0[int(epsg)], *_BESSEL, fn=-5000000.0)
+    X, Y, Z = _ecef(lat, lon, *_BESSEL)
+    s = math.pi / 180 / 3600
+    tx, ty, tz, rx, ry, rz, ds = 577.326, 90.129, 463.919, 5.137 * s, 1.474 * s, 5.297 * s, 2.4232e-6
+    X2 = tx + (1 + ds) * (X - rz * Y + ry * Z)
+    Y2 = ty + (1 + ds) * (rz * X + Y - rx * Z)
+    Z2 = tz + (1 + ds) * (-ry * X + rx * Y + Z)
+    la, lo = _geodetic(X2, Y2, Z2, *_GRS80)
+    return math.degrees(la), math.degrees(lo)
+
+
+def latlon_to_mgi(lat, lon, epsg):
+    """Gegenstueck zu mgi_to_latlon (iterativ, fuer Abfrage-Rechtecke)."""
+    lo0 = _MGI_L0[int(epsg)]
+    E, N = (lon - lo0) * 111320.0 * math.cos(math.radians(lat)), lat * 111132.0 - 5000000.0
+    for _ in range(8):
+        la, lo = mgi_to_latlon(E, N, epsg)
+        E += (lon - lo) * 111320.0 * math.cos(math.radians(lat))
+        N += (lat - la) * 111132.0
+    return E, N
+
+
+def latlon_to_laea(lat, lon):
+    """ETRS89 Breite/Laenge -> ETRS89-LAEA Europa (EPSG:3035), Rechtswert und Hochwert in Metern."""
+    a, f = _GRS80
+    e2 = f * (2 - f); e = math.sqrt(e2)
+    q = lambda ph: (1 - e2) * (math.sin(ph) / (1 - e2 * math.sin(ph) ** 2) - math.log((1 - e * math.sin(ph)) / (1 + e * math.sin(ph))) / (2 * e))
+    qp = q(math.pi / 2)
+    ph0, l0 = math.radians(52.0), math.radians(10.0)
+    ph, lm = math.radians(lat), math.radians(lon)
+    b, b0 = math.asin(q(ph) / qp), math.asin(q(ph0) / qp)
+    Rq = a * math.sqrt(qp / 2)
+    D = a * (math.cos(ph0) / math.sqrt(1 - e2 * math.sin(ph0) ** 2)) / (Rq * math.cos(b0))
+    B = Rq * math.sqrt(2 / (1 + math.sin(b0) * math.sin(b) + math.cos(b0) * math.cos(b) * math.cos(lm - l0)))
+    x = B * D * math.cos(b) * math.sin(lm - l0)
+    y = (B / D) * (math.cos(b0) * math.sin(b) - math.sin(b0) * math.cos(b) * math.cos(lm - l0))
+    return 4321000.0 + x, 3210000.0 + y
 
 
 def pip(x, z, ring):

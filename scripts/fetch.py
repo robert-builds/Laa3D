@@ -3,10 +3,10 @@
 Aufruf:  python3 scripts/fetch.py <phase> [<phase> ...]
 Phasen:  boundary  Gemeindegrenze und Ortsteil-Grenzen (OSM)
          cells     2-km-Kacheln, die die Gemeinde beruehren
-         addr      Adresspunkte je Kachel (LGB)
+         addr      Adresspunkte je Kachel (LGB); Oesterreich: Adressregister des BEV (fetch_at.py)
          osm       OSM-Auszug in 4-km-Bloecken
-         lod2      3D-Gebaeude je Kachel (LGB)
-         dop       Luftbild: Uebersicht, je Kachel 2 m/px, bebaute Kacheln 1 m/px
+         lod2      3D-Gebaeude je Kachel (LGB); Oesterreich: DLM Bauwerke des BEV (fetch_at.py)
+         dop       Luftbild: Uebersicht, je Kachel 2 m/px, bebaute Kacheln 1 m/px (LGB; Oesterreich: basemap.at)
 
 Wiederaufnahmefaehig: vorhandene Dateien werden uebersprungen. Quellen und Lizenzen: README.md
 """
@@ -14,12 +14,12 @@ import io, json, math, os, sys, time, urllib.parse, urllib.request, urllib.error
 from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from geo import CELL, GEMEINDE_RELATION, GEMEINDE_SCHLUESSEL, LAT0, LON0, M_LAT, M_LON, NB_BBOX, NB_NAME, pip, stitch, xz  # noqa: E402
+from geo import CELL, GEMEINDE_RELATION, GEMEINDE_SCHLUESSEL, LAT0, LON0, M_LAT, M_LON, NB_BBOX, NB_NAME, ORT, OT_ADMIN_LEVEL, STAAT, pip, stitch, xz  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RAW = os.path.join(ROOT, "data", "raw", "gemeinde")
 IMG = os.path.join(ROOT, "site", "img")
-UA = "GemeindeKarte-Prototyp/0.2"
+UA = ORT.get("kontakt_ua") or "MyCity3D"
 OVERPASS = "https://overpass-api.de/api/interpreter"
 WFS = "https://inspire.brandenburg.de/services/"
 WMS = "https://isk.geobasis-bb.de/mapproxy/dop20c/service/wms"
@@ -81,8 +81,8 @@ def phase_boundary():
     p = os.path.join(RAW, "ortsteile_geom.json")
     if not have(p):
         log("Ortsteil-Grenzen laden")
-        save(p, overpass('[out:json][timeout:120];area(%d)->.a;rel(area.a)["boundary"="administrative"]["admin_level"="9"];out geom;'
-                         % (3600000000 + GEMEINDE_RELATION)))
+        save(p, overpass('[out:json][timeout:120];area(%d)->.a;rel(area.a)["boundary"="administrative"]["admin_level"="%d"];out geom;'
+                         % (3600000000 + GEMEINDE_RELATION, OT_ADMIN_LEVEL)))
 
 
 def phase_cells():
@@ -146,17 +146,25 @@ def run_pool(fn, jobs, workers):
 
 
 def phase_addr():
+    if STAAT == "AT":
+        import fetch_at
+        return fetch_at.phase_addr()
     c = load_cells()
     run_pool(lambda i, j: wfs_cell("addr", "ad_alkis_wfs", "ad:Address", c, i, j), [(i, j) for i, j in c["cells"]], 4)
 
 
 def phase_lod2():
+    if STAAT == "AT":
+        import fetch_at
+        return fetch_at.phase_lod2()
     c = load_cells()
     run_pool(lambda i, j: wfs_cell("lod2", "bu-core3d_lod2_wfs", "bu-core3d:Building", c, i, j), [(i, j) for i, j in c["cells"]], 4)
 
 
 def phase_names():
     """Straßennamen: Adresspunkte verweisen nur auf ThoroughfareName-Kennungen (nur die der Gemeinde)."""
+    if STAAT == "AT":  # das Adressregister bringt die Strassennamen mit
+        return
     import re
     ids = set()
     d = os.path.join(RAW, "addr")
@@ -211,13 +219,16 @@ def phase_osm():
 
 # ------------------------------------------------------------------ Luftbild
 def getmap(bbox, w, h):
+    if STAAT == "AT":
+        import fetch_at
+        return fetch_at.getmap(bbox, w, h)
     url = (WMS + "?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=bebb_dop20c&STYLES=&CRS=EPSG:4326"
            "&BBOX=%.7f,%.7f,%.7f,%.7f&WIDTH=%d&HEIGHT=%d&FORMAT=image/jpeg" % (bbox + (w, h)))
     return http(url, timeout=300)
 
 
 def fill_nodata(im):
-    """Ausserhalb von Brandenburg liefert der Dienst reines Weiss. Zusammenhaengende Weissflaechen
+    """Ausserhalb von Brandenburg liefert der Dienst reines Weiss (basemap.at ausserhalb Oesterreichs: keine Kachel, schon dunkel). Zusammenhaengende Weissflaechen
     (mind. 5 Bildpunkte breit) werden durch die Umgebungsfarbe der Seite ersetzt. Gibt True zurueck, wenn etwas geaendert wurde."""
     from PIL import ImageChops, ImageFilter
     r, g, b = im.split()
@@ -249,7 +260,21 @@ def dop_cell(c, i, j, detail):
     log("dop", name)
 
 
+_AT_ZAHL = None
+
+
 def count_buildings(i, j):
+    global _AT_ZAHL
+    if STAAT == "AT":  # Bauwerke je Kachel nach dem ersten Punkt des Umrisses
+        if _AT_ZAHL is None:
+            _AT_ZAHL = {}
+            c = load_cells()
+            p = os.path.join(RAW, "at", "bauwerke.json")
+            for b in (json.load(open(p, encoding="utf-8"))["bauwerke"] if have(p) else []):
+                x, z = xz(*b["p"][0][0][0])
+                k = (int(math.floor((x - c["x0"]) / CELL)), int(math.floor((z - c["z0"]) / CELL)))
+                _AT_ZAHL[k] = _AT_ZAHL.get(k, 0) + 1
+        return _AT_ZAHL.get((i, j), 0)
     p = os.path.join(RAW, "lod2", "c_%d_%d.gml" % (i, j))
     if not have(p):
         return 0

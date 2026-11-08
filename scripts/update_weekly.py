@@ -2,11 +2,12 @@
 
 Aufruf:  python3 scripts/update_weekly.py [--skip-osm] [--skip-gtfs] [--no-state]
 Schritte: 1. OSM live (Orte, Haltestellen)   fetch_live.py
-          2. VBB-Fahrplan laden und filtern  prepare_fahrplan.py   (CC BY 4.0, ca. 65 MB)
+          2. Fahrplan (GTFS) laden und filtern prepare_fahrplan.py   (ort.json fahrplan.gtfs_url, CC BY 4.0)
           3. Seitendaten neu bauen           prepare_gemeinde.py
           4. Vergleich mit data/state/state.json -> site/data/news.js, Zustand fortschreiben
 Veroeffentlichen ist ein eigener Schritt (docs/VEROEFFENTLICHEN.md).
-Nicht woechentlich: Gebaeude und Adressen (LGB, vierteljaehrlich: fetch.py lod2 addr), Bodenrichtwerte (jaehrlich).
+Nicht woechentlich: Gebaeude und Adressen (LGB bzw. BEV, vierteljaehrlich: fetch.py lod2 addr), Bodenrichtwerte (jaehrlich).
+Oesterreich zusaetzlich: Verordnungen (fetch_verordnungen.py) und Gewaesser-Messstellen (fetch_gewaesser.py), wenn in ort.json eingeschaltet.
 """
 import datetime as dt, json, os, re, subprocess, sys, urllib.request, zipfile
 
@@ -17,9 +18,10 @@ sys.stdout.reconfigure(encoding="utf-8")
 
 SITE = os.path.join(ROOT, "site")
 STATE = os.path.join(ROOT, "data", "state", "state.json")
-GTFS = os.path.join(ROOT, "data", "raw", "vbb", "gtfs.zip")
+GTFS = os.path.join(ROOT, "data", "raw", "gtfs", "gtfs.zip")
 from geo import ORT  # noqa: E402
 GTFS_URL = ORT["fahrplan"]["gtfs_url"]
+BETR_KURZ = ORT["fahrplan"].get("betreiber_kurz") or ORT["fahrplan"]["betreiber"]
 KEEP_DAYS = 28
 TYPE_DE = {"restaurant": "Restaurant", "cafe": "Café", "fast_food": "Imbiss", "fuel": "Tankstelle", "hairdresser": "Friseur",
            "convenience": "Lebensmittelladen", "farm": "Hofladen", "kindergarten": "Kindergarten", "school": "Schule", "pharmacy": "Apotheke",
@@ -45,11 +47,47 @@ def load_js(path, var):
     return json.loads(m.group(1))
 
 
+def gtfs_url():
+    """Adresse des Feeds. {jahr} (Fahrplanjahr, z. B. OeBB) wird durch das neueste vorhandene Jahr ersetzt: erst das naechste, dann das laufende."""
+    if "{jahr}" not in GTFS_URL:
+        return GTFS_URL
+    y = dt.date.today().year
+    for j in (y + 1, y, y - 1):
+        u = GTFS_URL.replace("{jahr}", str(j))
+        try:
+            req = urllib.request.Request(u, method="HEAD", headers={"User-Agent": ORT.get("kontakt_ua", "MyCity3D")})
+            with urllib.request.urlopen(req, timeout=60) as r:
+                if r.status == 200:
+                    return u
+        except Exception:
+            continue
+    sys.exit("Kein Fahrplan unter %s gefunden" % GTFS_URL)
+
+
+def mvo_request():
+    """Optional (Oesterreich): Feed der Mobilitaetsverbuende mit Bussen. Zugangsdaten nur aus Umgebungsvariablen, nie aus ort.json."""
+    url = (ORT["fahrplan"].get("mvo_feed") or "").strip()
+    user, pw = os.environ.get("MVO_USER"), os.environ.get("MVO_PASSWORD")
+    if not url:
+        return None
+    if not (user and pw):
+        log("WARNUNG: fahrplan.mvo_feed ist gesetzt, aber MVO_USER/MVO_PASSWORD fehlen: nehme gtfs_url")
+        return None
+    import urllib.parse
+    tok = json.loads(urllib.request.urlopen(urllib.request.Request(
+        "https://user.mobilitaetsverbuende.at/auth/realms/dbp-public/protocol/openid-connect/token",
+        data=urllib.parse.urlencode({"client_id": "dbp-script-download", "grant_type": "password", "username": user, "password": pw}).encode()), timeout=60).read())
+    return urllib.request.Request(url, headers={"Authorization": "Bearer " + tok["access_token"], "User-Agent": ORT.get("kontakt_ua", "MyCity3D")})
+
+
 def download_gtfs():
-    log("VBB-Fahrplan laden:", GTFS_URL)
+    req = mvo_request()
+    if req is None:
+        u = gtfs_url()
+        req = urllib.request.Request(u, headers={"User-Agent": ORT.get("kontakt_ua", "MyCity3D")})
+    log("Fahrplan laden:", req.full_url)
     os.makedirs(os.path.dirname(GTFS), exist_ok=True)
     tmp = GTFS + ".part"
-    req = urllib.request.Request(GTFS_URL, headers={"User-Agent": "GemeindeKarte-Prototyp/0.4"})
     with urllib.request.urlopen(req, timeout=280) as r, open(tmp, "wb") as f:
         while True:
             b = r.read(1 << 20)
@@ -122,7 +160,7 @@ def diff(old, new, today):
     fo, fn = old["feed"], new["feed"]
     if (fo["from"], fo["to"]) != (fn["from"], fn["to"]):
         d = lambda s: s[6:8] + "." + s[4:6] + "." + s[:4]
-        add("feed", fn["from"] + "-" + fn["to"], "Neuer VBB-Fahrplan", "gültig %s bis %s" % (d(fn["from"]), d(fn["to"])))
+        add("feed", fn["from"] + "-" + fn["to"], "Neuer Fahrplan (%s)" % BETR_KURZ, "gültig %s bis %s" % (d(fn["from"]), d(fn["to"])))
     for ln in sorted(set(fn["lines"]) - set(fo["lines"])):
         add("line_new", ln, "Neue Linie im Fahrplan: " + ln)
     for ln in sorted(set(fo["lines"]) - set(fn["lines"])):
@@ -147,6 +185,11 @@ def main():
         run("prepare_fahrplan.py")
         run("prepare_fahrten.py", must=False)  # Fahrten fuer Fahrzeuge auf der Karte; faellt es aus, bleibt der alte Stand
     run("prepare_gemeinde.py")
+    bs = ORT.get("bausteine") or {}
+    if bs.get("verordnungen"):
+        run("fetch_verordnungen.py", must=False)  # Verordnungen (data.gv.at); faellt es aus, bleibt der alte Stand
+    if bs.get("gewaesser"):
+        run("fetch_gewaesser.py", must=False)  # Messstellen des Hydrographischen Dienstes (nur Lage und Verweis)
 
     new = snapshot()
     old = json.load(open(STATE, encoding="utf-8")) if os.path.exists(STATE) and "--no-state" not in a else None

@@ -46,11 +46,14 @@ class Dgm:
         self.a[self.a < NODATA] = np.nan
 
     def at(self, x, z):
-        """Höhe über NHN an lokalen Koordinaten (Felder), bilinear; nan ohne Daten."""
+        """Höhe über NHN (Österreich: über Adria) an lokalen Koordinaten (Felder), bilinear; nan ohne Daten."""
         m = self.meta
         x, z = np.asarray(x, dtype=np.float64), np.asarray(z, dtype=np.float64)
-        E, N = utm33(LAT0 - z / M_LAT, LON0 + x / M_LON)
-        c, r = (E - m["e0"]) / m["step"] - 0.5, (m["n1"] - N) / m["step"] - 0.5
+        if m.get("system") == "lokal":  # Österreich (fetch_dgm.py main_at): Raster schon in lokalen Metern, Zeile 0 = Norden (kleinstes z)
+            c, r = (x - m["x0"]) / m["step"] - 0.5, (z - m["z0"]) / m["step"] - 0.5
+        else:
+            E, N = utm33(LAT0 - z / M_LAT, LON0 + x / M_LON)
+            c, r = (E - m["e0"]) / m["step"] - 0.5, (m["n1"] - N) / m["step"] - 0.5
         c0, r0 = np.floor(c).astype(int), np.floor(r).astype(int)
         fc, fr = c - c0, r - r0
         h, w = self.a.shape
@@ -137,7 +140,7 @@ def run():
     col = np.where(d >= 0, 255, 0).astype(np.uint8)
     rgba = np.dstack([col, col, col, alpha])
     Image.fromarray(rgba, "RGBA").save(os.path.join(IMG, "relief.png"), optimize=True)
-    print("Gelaende: %d Gebaeude, %d Orte/Haltestellen/Ortsteile mit Hoehe, relief.png %d x %d, Hoehe %.0f bis %.0f m ueber NHN" % (n_b, n_m, nx, nz, float(np.nanmin(D.a)), float(np.nanmax(D.a))))
+    print("Gelaende: %d Gebaeude, %d Orte/Haltestellen/Ortsteile mit Hoehe, relief.png %d x %d, Hoehe %.0f bis %.0f m" % (n_b, n_m, nx, nz, float(np.nanmin(D.a)), float(np.nanmax(D.a))))
     return n_b
 
 

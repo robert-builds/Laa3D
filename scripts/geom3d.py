@@ -47,7 +47,7 @@ def ear_clip(p2):
             a, b, c = p2[i0], p2[i1], p2[i2]
             if tri_area2(a, b, c) <= 1e-9:
                 continue
-            if any(in_tri(p2[j], a, b, c) for j in idx if j not in (i0, i1, i2)):
+            if any(in_tri(p2[j], a, b, c) for j in idx if j not in (i0, i1, i2) and p2[j] not in (a, b, c)):  # gleiche Punkte (Bruecke zu einem Loch) zaehlen nicht
                 continue
             out.append((i0, i1, i2))
             del idx[k]
@@ -68,3 +68,35 @@ def triangulate(pts):
     return ear_clip(p2), (nx, ny, nz)
 
 
+
+
+def _seg_cross(a, b, c, d):
+    """Schneiden sich die Strecken a-b und c-d echt (ohne gemeinsame Endpunkte)?"""
+    if a in (c, d) or b in (c, d):
+        return False
+    d1, d2 = tri_area2(c, d, a), tri_area2(c, d, b)
+    d3, d4 = tri_area2(a, b, c), tri_area2(a, b, d)
+    return (d1 > 0) != (d2 > 0) and (d3 > 0) != (d4 > 0)
+
+
+def triangulate_holes(outer, holes):
+    """Ebenes Polygon mit Loechern (Innenhoefe) triangulieren: jedes Loch wird ueber eine Bruecke zum naechsten sichtbaren
+    Punkt des aeusseren Rings angehaengt, dann Ear-Clipping. Gibt (Punkte, Dreiecke) zurueck; Punkte = 2D-Liste (x, z)."""
+    def area(r):
+        return sum(tri_area2((0, 0), r[i], r[(i + 1) % len(r)]) for i in range(len(r)))
+    poly = list(outer) if area(outer) > 0 else list(outer)[::-1]
+    for h in sorted([list(h) for h in holes if len(h) >= 3], key=lambda h: -max(p[0] for p in h)):
+        h = h if area(h) < 0 else h[::-1]  # Loch entgegen dem aeusseren Ring
+        hi = max(range(len(h)), key=lambda i: h[i][0])
+        hp = h[hi]
+        edges = [(poly[i], poly[(i + 1) % len(poly)]) for i in range(len(poly))]
+        best = None
+        for k in sorted(range(len(poly)), key=lambda k: (poly[k][0] - hp[0]) ** 2 + (poly[k][1] - hp[1]) ** 2):
+            if not any(_seg_cross(hp, poly[k], a, b) for a, b in edges):
+                best = k
+                break
+        if best is None:
+            continue
+        ring = h[hi:] + h[:hi] + [h[hi]]
+        poly = poly[:best + 1] + ring + [poly[best]] + poly[best + 1:]
+    return poly, ear_clip(poly)

@@ -1,0 +1,84 @@
+{
+  "_hinweis": "Einzige Datei, die du fuer deinen Ort anpassen musst. Eingetragen ist Laa an der Thaya (Niederoesterreich, Oesterreich). Beispiele: beispiele/laa-an-der-thaya.json (Oesterreich), beispiele/niedergoersdorf.json (Brandenburg). Danach: python scripts/ort_pruefen.py",
+  "name": "Laa an der Thaya",
+  "name_ascii": "Laa_an_der_Thaya",
+  "art": "Stadtgemeinde",
+  "untertitel": "Karte der Stadtgemeinde",
+  "kurzbeschreibung": "Die Stadtgemeinde Laa an der Thaya als interaktive 3D-Karte aus offenen Daten: Gebäude, Adresssuche, Orte, Bahn, Wetter der Messstation Laa, Verkehrsverordnungen, Gewässer und Sonnenstand.",
+  "kontakt_ua": "Laa3D (https://github.com/robert-builds/Laa3D)",
+  "zeitzone": "Europe/Vienna",
+  "geo": {
+    "lat0": 48.717,
+    "lon0": 16.381,
+    "kachel_m": 2000,
+    "osm_relation": 103035,
+    "gemeindeschluessel": "31629",
+    "ortsteile_admin_level": 10,
+    "wetter_lat": 48.7314,
+    "wetter_lon": 16.3897,
+    "wetter_station": "11335",
+    "wetter_station_name": "Laa an der Thaya",
+    "umgrenzung_sued_west_nord_ost": [
+      48.66,
+      16.26,
+      48.775,
+      16.5
+    ]
+  },
+  "nachbarort": null,
+  "land": {
+    "_hinweis": "staat AT schaltet die oesterreichischen Dienste ein: Gebaeude (BEV, DLM Bauwerke), Adressen (BEV, Adressregister), Luftbild (basemap.at), Gelaende (BEV, ALS-Hoehenraster), Wetter (GeoSphere Austria). staat DE nutzt die Dienste von Brandenburg.",
+    "name": "Niederösterreich",
+    "kennung": "NOE",
+    "staat": "AT"
+  },
+  "fahrplan": {
+    "_hinweis": "Sollfahrplan der OEBB (GTFS, CC BY 4.0, ohne Anmeldung, nur Bahn). {jahr} wird durch das Fahrplanjahr ersetzt, das Skript nimmt das neueste vorhandene. Busse (VOR, Postbus) gibt es nur im Feed der Mobilitaetsverbuende Oesterreich (Anmeldung noetig): mvo_feed eintragen und Zugangsdaten als Umgebungsvariablen MVO_USER und MVO_PASSWORD setzen, siehe docs/OESTERREICH.md.",
+    "gtfs_url": "https://static.web.oebb.at/open-data/soll-fahrplan-gtfs/GTFS_Fahrplan_{jahr}.zip",
+    "betreiber": "ÖBB-Personenverkehr AG",
+    "lizenz": "CC BY 4.0",
+    "lizenz_url": "https://data.oebb.at/de/datensaetze~soll-fahrplan-gtfs~",
+    "mvo_feed": null,
+    "live_hosts": [
+      "https://v6.oebb.transport.rest"
+    ],
+    "live_aus": false,
+    "betreiber_kurz": "ÖBB",
+    "betreiber_kuerzel": {
+      "_hinweis": "Optional: Kurzname je Verkehrsunternehmen (Teilstring des Namens im Feed) fuer die Fahrtenliste",
+      "OEBB Personenverkehr": "ÖBB",
+      "Postbus": "Postbus"
+    }
+  },
+  "veroeffentlichung": {
+    "impressum_url": "",
+    "datenschutz_url": "",
+    "winscp_sitzung": "laa-karte",
+    "zielordner": "/laa3d"
+  },
+  "bausteine": {
+    "_hinweis": "Optionale Bausteine. baustellen, bodenrichtwerte: nur Brandenburg. gelaende: Brandenburg (LGB) oder Oesterreich (BEV-ALS, braucht pip install rasterio numpy). verordnungen: Verkehrsverordnungen der Bezirkshauptmannschaft und Verordnungen der Gemeinde aus data.gv.at (Oesterreich), behoerde = Teil des Herausgebernamens. gewaesser: Messstellen des Hydrographischen Dienstes Niederoesterreich in der Umgebung (Radius in km) mit Verweis auf die amtlichen Werte. muellabfuhr: Einbettung der Abholtermine des oertlichen Abfallverbands; null = keine. solar_kwh_je_kwp: nur bei Dachformen (LoD2); die oesterreichischen Gebaeude haben flache Daecher (LoD1), daher null.",
+    "baustellen": false,
+    "bodenrichtwerte": false,
+    "gelaende": true,
+    "verordnungen": {
+      "behoerden": [
+        "Bezirkshauptmannschaft Mistelbach",
+        "Stadtgemeinde Laa an der Thaya"
+      ],
+      "suchbegriff": "Laa an der Thaya",
+      "monate": 18
+    },
+    "gewaesser": {
+      "radius_km": 12
+    },
+    "muellabfuhr": {
+      "name": "GAUL – Abfallverband Laa an der Thaya",
+      "url": "https://gaul-laa.at/fuer-die-bevoelkerung/abholtermine/",
+      "seite": "https://gaul-laa.at/fuer-die-bevoelkerung/abholtermine/",
+      "anleitung": "Gemeinde und Ortschaft wählen, dann erscheinen die Abholtermine.",
+      "hinweis": "Die Seite des Verbands setzt Cookies und zeigt dafür einen eigenen Hinweis."
+    },
+    "solar_kwh_je_kwp": null
+  }
+}

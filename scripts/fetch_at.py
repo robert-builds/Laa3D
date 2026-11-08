@@ -12,7 +12,7 @@ installiert (pip install pyogrio), liest das Skript ueber das Netz nur den Aussc
 Ohne pyogrio laedt es die ganze Datei einmal nach data/raw/at/ (wiederaufnehmbar) und liest sie mit sqlite3 aus der
 Standardbibliothek. Koordinaten kommen in MGI / Gauss-Krueger und werden mit geo.mgi_to_latlon umgerechnet.
 """
-import csv, io, json, math, os, re, sqlite3, struct, sys, time, urllib.error, urllib.request, zipfile
+import csv, io, json, math, os, re, sqlite3, struct, sys, threading, time, urllib.error, urllib.request, zipfile
 from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -27,6 +27,9 @@ UA = ORT.get("kontakt_ua") or "MyCity3D"
 ADR_URL = "https://data.bev.gv.at/download/Adressregister/Adresse_Relationale_Tabellen_Stichtagsdaten.zip"
 BEV_SUCHE = "https://data.bev.gv.at/geonetwork/srv/api/search/records/_search"
 WMTS = "https://mapsneu.wien.gv.at/basemap/bmaporthofoto30cm/normal/google3857/{z}/{y}/{x}.jpeg"
+# basemap.at drosselt viele gleichzeitige Abrufe (beobachtet von GitHub Actions aus: Zeitueberschreitungen ab rund 18 parallelen
+# Anfragen). Darum hoechstens BASEMAP_PARALLEL Anfragen gleichzeitig ueber alle Kacheln hinweg.
+_BASEMAP = threading.BoundedSemaphore(int(os.environ.get("BASEMAP_PARALLEL", "4")))
 sys.stdout.reconfigure(encoding="utf-8")
 
 
@@ -54,7 +57,7 @@ def http(url, data=None, headers=None, timeout=300, tries=5):
 
 def save(path, blob):
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = path + ".part"
+    tmp = "%s.%d.%d.part" % (path, os.getpid(), threading.get_ident())  # eigener Name je Thread: Nachbarkacheln laden dieselbe Kachel gleichzeitig
     with open(tmp, "wb") as f:
         f.write(blob)
     os.replace(tmp, path)
@@ -303,7 +306,9 @@ def _tile(z, x, y):
     p = os.path.join(CACHE, "basemap", str(z), str(y), "%d.jpeg" % x)
     if not have(p):
         try:
-            save(p, http(WMTS.format(z=z, x=x, y=y), timeout=60))
+            with _BASEMAP:
+                blob = http(WMTS.format(z=z, x=x, y=y), timeout=30, tries=4)
+            save(p, blob)
         except urllib.error.HTTPError as e:
             if e.code == 404:
                 return None
@@ -323,7 +328,7 @@ def getmap(bbox, w, h):
     tx0, ty0, tx1, ty1 = int(x0 // 256), int(y0 // 256), int(x1 // 256), int(y1 // 256)
     mos = Image.new("RGB", ((tx1 - tx0 + 1) * 256, (ty1 - ty0 + 1) * 256), (10, 22, 38))
     jobs = [(tx, ty) for tx in range(tx0, tx1 + 1) for ty in range(ty0, ty1 + 1)]
-    with ThreadPoolExecutor(6) as ex:
+    with ThreadPoolExecutor(4) as ex:
         for (tx, ty), p in zip(jobs, ex.map(lambda j: _tile(z, j[0], j[1]), jobs)):
             if p:  # fehlende Kachel (ausserhalb Oesterreichs) bleibt dunkel
                 mos.paste(Image.open(p).convert("RGB"), ((tx - tx0) * 256, (ty - ty0) * 256))

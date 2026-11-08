@@ -1,0 +1,98 @@
+# Baut die Karte aus den offenen Daten und veröffentlicht sie auf GitHub Pages.
+# Ein Klick: Actions → "Karte bauen und veröffentlichen" → "Run workflow".
+# Läuft außerdem jede Woche (Montag früh) und nach Änderungen an Vorlage, Skripten, Seite oder ort.json.
+# Rohdaten, Zustand und Luftbilder liegen zwischen den Läufen im Actions-Cache: der erste Lauf und der Lauf
+# einmal im Quartal bauen alles neu (rund 40 Minuten), die übrigen nur den Wochenlauf (wenige Minuten).
+name: Karte bauen und veröffentlichen
+
+on:
+  workflow_dispatch:
+    inputs:
+      vollstaendig:
+        description: "Alles neu bauen (Gebäude, Adressen, Luftbild, Gelände)"
+        type: boolean
+        default: false
+  schedule:
+    - cron: "23 3 * * 1"
+  push:
+    branches: ["main"]
+    paths: ["ort.json", "vorlage/**", "site/**", "scripts/**", ".github/workflows/pages.yml"]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      PYTHONUNBUFFERED: "1"
+      VOLLSTAENDIG: ${{ inputs.vollstaendig && '1' || '0' }}
+      # Optional für Busse (Feed der Mobilitätsverbünde): Secrets MVO_USER und MVO_PASSWORD anlegen, siehe docs/OESTERREICH.md
+      MVO_USER: ${{ secrets.MVO_USER }}
+      MVO_PASSWORD: ${{ secrets.MVO_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Pakete
+        run: pip install -r requirements.txt
+
+      - name: Daten aus dem letzten Lauf holen
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            data/raw
+            data/state
+            site/data
+            site/img
+          key: karte-${{ hashFiles('ort.json') }}-${{ github.run_id }}
+          restore-keys: karte-${{ hashFiles('ort.json') }}-
+
+      - name: Prüfen
+        run: python scripts/ort_pruefen.py
+
+      - name: Bauen
+        run: python scripts/ci_bauen.py
+
+      - name: Große Zwischendateien entfernen
+        if: always()
+        run: rm -f data/raw/at/adressregister.zip data/raw/gtfs/gtfs.zip data/raw/at/*.gpkg
+
+      - name: Daten für den nächsten Lauf sichern
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            data/raw
+            data/state
+            site/data
+            site/img
+          key: karte-${{ hashFiles('ort.json') }}-${{ github.run_id }}
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -54,10 +54,16 @@
     "impressum_url": "",
     "datenschutz_url": "",
     "winscp_sitzung": "laa-karte",
-    "zielordner": "/laa3d"
+    "zielordner": "/laa3d",
+    "urheber": {
+      "_hinweis": "Optional: Urheberzeile in den Fusszeilen. Leer lassen = keine Zeile.",
+      "name": "",
+      "link_text": "",
+      "link_url": ""
+    }
   },
   "bausteine": {
-    "_hinweis": "Optionale Bausteine. baustellen, bodenrichtwerte: nur Brandenburg. gelaende: Brandenburg (LGB) oder Oesterreich (BEV-ALS, braucht pip install rasterio numpy). verordnungen: Verkehrsverordnungen der Bezirkshauptmannschaft und Verordnungen der Gemeinde aus data.gv.at (Oesterreich), behoerde = Teil des Herausgebernamens. gewaesser: Messstellen des Hydrographischen Dienstes Niederoesterreich in der Umgebung (Radius in km) mit Verweis auf die amtlichen Werte. muellabfuhr: Einbettung der Abholtermine des oertlichen Abfallverbands; null = keine. solar_kwh_je_kwp: nur bei Dachformen (LoD2); die oesterreichischen Gebaeude haben flache Daecher (LoD1), daher null.",
+    "_hinweis": "Optionale Bausteine, jeder einzeln abschaltbar (false oder null). Nur Brandenburg: baustellen, waldbrand, bodenrichtwerte. Nur Deutschland (DWD): landwirtschaft, klima, webcam. Ueberall (OpenStreetMap, Wikipedia): notfall, ortsgeschichte, touren. gelaende: Brandenburg (LGB) oder Oesterreich (BEV-ALS, braucht pip install rasterio numpy). Oesterreich: verordnungen (Verkehrsverordnungen der Bezirkshauptmannschaft und Verordnungen der Gemeinde aus data.gv.at, behoerden = Teil des Herausgebernamens), gewaesser (Messstellen des Hydrographischen Dienstes Niederoesterreich im Umkreis, nur mit Verweis auf die amtlichen Werte). drohnenhinweis: Verweis auf die amtliche Drohnenkarte (Deutschland dipul, Oesterreich Dronespace der Austro Control). meldeportal: Meldeplattform der Gemeinde fuer Schaeden an der Infrastruktur, null = keine. muellabfuhr: Einbettung der Abholtermine des oertlichen Abfallverbands; null = keine. solar_kwh_je_kwp: nur bei Dachformen (LoD2); die oesterreichischen Gebaeude haben flache Daecher (LoD1), daher null. Quellen und Lizenzen: docs/DATENQUELLEN.md, docs/OESTERREICH.md.",
     "baustellen": false,
     "bodenrichtwerte": false,
     "gelaende": true,
@@ -79,6 +85,17 @@
       "anleitung": "Gemeinde und Ortschaft wählen, dann erscheinen die Abholtermine.",
       "hinweis": "Die Seite des Verbands setzt Cookies und zeigt dafür einen eigenen Hinweis."
     },
-    "solar_kwh_je_kwp": null
+    "solar_kwh_je_kwp": null,
+    "landwirtschaft": false,
+    "waldbrand": null,
+    "notfall": true,
+    "ortsgeschichte": true,
+    "touren": {
+      "wikivoyage": null
+    },
+    "klima": null,
+    "webcam": null,
+    "meldeportal": null,
+    "drohnenhinweis": true
   }
 }

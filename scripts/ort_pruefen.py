@@ -60,6 +60,9 @@ if bs.get("gelaende") and staat == "DE" and ORT["land"].get("kennung") != "BB":
 if staat == "AT":
     if bs.get("bodenrichtwerte"):
         fehler.append("bausteine.bodenrichtwerte: in Oesterreich gibt es keine offenen Bodenrichtwerte, auf false setzen")
+    for k in ("landwirtschaft", "klima", "webcam", "waldbrand"):
+        if bs.get(k):
+            fehler.append("bausteine.%s nutzt Dienste aus Deutschland (DWD bzw. Brandenburg): in Oesterreich auf null oder false setzen" % k)
     if g.get("ortsteile_admin_level") not in (9, 10):
         warn.append("geo.ortsteile_admin_level: Katastralgemeinden liegen in OpenStreetMap auf Ebene 10 (Standard 9)")
     if not g.get("wetter_station"):
@@ -75,6 +78,17 @@ if staat == "AT":
             import rasterio  # noqa: F401
         except ImportError:
             fehler.append("bausteine.gelaende braucht in Oesterreich rasterio und numpy: pip install rasterio numpy (oder gelaende auf false)")
+if bs.get("waldbrand") and ORT["land"].get("kennung") != "BB":
+    fehler.append("bausteine.waldbrand liest die Seite des Landes Brandenburg: fuer andere Laender auf null setzen")
+w = bs.get("webcam")
+if w and not str(w.get("url", "")).startswith("https://"):
+    fehler.append("bausteine.webcam.url muss eine https-Adresse sein (oder webcam auf null setzen)")
+for st in (bs.get("klima") or {}).get("stationen", []):
+    if not (isinstance(st, list) and len(st) == 4 and re.fullmatch(r"\d{5}", str(st[0]))):
+        fehler.append("bausteine.klima.stationen: Eintrag %r muss [\"12345\", \"Name\", km, \"Lage\"] mit fuenfstelliger DWD-Stationsnummer sein" % (st,))
+mp = bs.get("meldeportal")
+if mp and not str(mp.get("url", "")).startswith("https://"):
+    fehler.append("bausteine.meldeportal.url muss eine https-Adresse sein (oder meldeportal auf null setzen)")
 m = bs.get("muellabfuhr")
 if m and not str(m.get("url", "")).startswith("https://"):
     fehler.append("bausteine.muellabfuhr.url muss eine https-Adresse sein (oder muellabfuhr auf null setzen)")

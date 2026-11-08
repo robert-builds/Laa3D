@@ -11,6 +11,13 @@ Stand 08.11.2026. **Grundsatz:** Auf die Karte kommen nur Daten und Funktionen m
 | Dachfarbe | aus dem Luftbild gerechnet | wie das Luftbild | wo das Luftbild vorliegt |
 | Solar-Eignung | im Browser aus den LoD2-Dachflächen gerechnet | wie LoD2 | wo LoD2 vorliegt |
 | Bodenrichtwerte | BORIS Brandenburg | dl-de/by-2-0 | Brandenburg |
+| Hangneigung, Geländesenken | aus dem DGM gerechnet (Neigung aus dem 10-m-Raster, Senken durch Füllen auf einem 20-m-Raster) | wie das DGM | Brandenburg; eine Geländeanalyse, keine Gefahrenkarte |
+| Löschwasser, Sirenen, Windräder, Biogas, Solarparks, Flugplätze, Freizeit, Alltag, Straßenlampen | OpenStreetMap über Overpass | ODbL | überall; von Mitwirkenden eingetragen, daher unvollständig möglich |
+| Bodenfeuchte und Agrarwetter | DWD Climate Data Center, `derived_germany/soil/daily/recent` (Modelle AMBAV, AMBETI) | CC BY 4.0, Quellenvermerk „Deutscher Wetterdienst“ | Deutschland, nächste Station |
+| Waldbrandgefahrenstufe | Seite des Landesministeriums (MLEUV), täglich gelesen | amtliche Angabe, Verweis auf die Seite | **Brandenburg** |
+| Klima | DWD Climate Data Center, `observations_germany/climate/monthly/kl` | CC BY 4.0 | Deutschland, Stationen in `ort.json` |
+| Ortsgeschichte | Wikipedia (MediaWiki-API), Einleitung und Abschnitt Geschichte | CC BY-SA 4.0: Urheber, Version und Lizenz stehen an jedem Text | überall |
+| Touren | OpenStreetMap-Routenrelationen; optional Einleitung eines Wikivoyage-Artikels | ODbL; Wikivoyage CC BY-SA 4.0 | überall |
 | Straßen, Orte, Haltestellen, Grenzen, Öffnungszeiten | OpenStreetMap über Overpass | ODbL | überall |
 | Fahrplan (Sollfahrplan, Fahrten) | GTFS-Feed des Verkehrsverbunds | VBB bzw. ÖBB, CC BY 4.0 | je Feed, in `ort.json` |
 | Gebäude (LoD1), Adressen, Luftbild, Gelände | BEV (DLM Bauwerke, Adressregister, ALS-Höhenraster), basemap.at | CC BY 4.0 bzw. Nutzungsbedingungen Adressregister | Österreich (`land.staat = "AT"`), Einzelheiten in `docs/OESTERREICH.md` |
@@ -23,7 +30,8 @@ Kein Betreiber-Abruf, nichts im Wochenlauf. Der Schalter „Live-Daten laden“ 
 
 | Thema | Dienst | Lizenz / Hinweis |
 |---|---|---|
-| Wetter, amtliche Warnungen, Wolkenebene | `api.brightsky.dev` (Daten des Deutschen Wetterdienstes) | DWD-Daten, GeoNutzV; die Wolkenebene nutzt Bedeckungsgrad und Windrichtung |
+| Wetter, amtliche Warnungen, 7-Tage-Bericht, Niederschlag, Wolkenebene | `api.brightsky.dev` (Daten des Deutschen Wetterdienstes) | DWD-Daten, GeoNutzV; die Wolkenebene nutzt Bedeckungsgrad und Windrichtung |
+| Webcam (optional) | Bilderserver des DWD, Adresse in `bausteine.webcam` (Bilder, Server `opendata.dwd.de`) | DWD, CC BY 4.0; braucht die Freigabe `img-src` in der Inhaltsrichtlinie, die `baue_seiten.py` selbst setzt |
 | Luftqualität | `air-quality-api.open-meteo.com` (Copernicus CAMS) | CC BY 4.0, nur nichtkommerzielle Nutzung ohne Schlüssel; Modellrechnung, **keine Messung vor Ort** |
 | Baustellen und Sperrungen | `isk.geobasis-bb.de` (Landesbetrieb Straßenwesen) | dl-de/by-2-0, **nur Brandenburg** (`bausteine.baustellen`) |
 | Bahn und Bus live, Fahrzeugpositionen | freie `transport.rest`-Instanzen (HAFAS) | inoffiziell, ohne Zusage; Instanzen in `fahrplan.live_hosts` |
@@ -44,6 +52,9 @@ Die Inhaltsrichtlinie (CSP) der Seiten wird in `scripts/baue_seiten.py` aus gena
 | Stromstörungen, Pegel | keine offene Schnittstelle mit CORS belegt. Österreich: Die Karte zeigt die Messstellen des Landes NÖ mit Verweis, aber keine Werte |
 | Bodenrichtwerte Österreich | kein offener amtlicher Bestand |
 | Abflussvorhersage aus GloFAS (Open-Meteo Flood) | Rasterzelle bei Laa trifft nicht die Thaya, Werte nicht belastbar |
+| Drohnen-Geozonen (dipul) | Lizenz (CC BY-ND, nicht-kommerzielle Nutzung bei WMS) für eine Einbindung nicht eindeutig: nur Verweis auf die amtliche Karte |
+| Meldeportal (z. B. Maerker) | keine offene Schnittstelle: nur Verweis, die Meldung geschieht beim Portal |
+| Drohnen-Geozonen Österreich (Dronespace) | nur Verweis auf die Karte der Austro Control |
 
 ## Annahmen der Einfärbungen
 

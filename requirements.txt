@@ -1,0 +1,6 @@
+# Pakete fuer den Aufbau (python scripts/erstaufbau.py). Ohne die optionalen Pakete laufen die Grundfunktionen mit Pillow allein.
+pillow
+numpy        # Gelaende, Relief
+scipy        # Gelaendesenken
+rasterio     # Oesterreich: Gelaende aus dem ALS-Hoehenraster des BEV
+pyogrio      # Oesterreich: nur den Ausschnitt der Gemeinde aus den Bauwerken des BEV lesen

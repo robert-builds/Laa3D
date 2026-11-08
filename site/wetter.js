@@ -25,6 +25,59 @@
     var ctl = new AbortController(), tm = setTimeout(function () { ctl.abort(); }, 12000);
     return fetch(u, { credentials: 'omit', referrerPolicy: 'no-referrer', signal: ctl.signal }).then(function (r) { clearTimeout(tm); if (!r.ok) throw new Error(r.status); return r.json(); }, function (e) { clearTimeout(tm); throw e; });
   }
+  // Tageswerte der nächsten Tage aus den stündlichen DWD-Vorhersagewerten (Bright Sky): Höchst- und Tiefstwert, Niederschlag, Wind, Symbol
+  function tageswerte(rows) {
+    var by = {}, order = [];
+    rows.forEach(function (r) {
+      var d = new Date(r.timestamp).toLocaleDateString('sv-SE', { timeZone: TZ });
+      if (!by[d]) { by[d] = []; order.push(d); }
+      by[d].push(r);
+    });
+    var PREC = { thunderstorm: 1, hail: 1, snow: 1, sleet: 1, rain: 1 };
+    return order.map(function (d, i) {
+      var a = by[d];
+      if (a.length < 12 && i > 0) return null; // angeschnittener letzter Tag
+      var temps = a.map(function (r) { return r.temperature; }).filter(function (v) { return v != null; });
+      if (!temps.length) return null;
+      var day = a.filter(function (r) { var h = +new Date(r.timestamp).toLocaleTimeString('en-GB', { hour: '2-digit', timeZone: TZ }).slice(0, 2); return h >= 7 && h <= 20; });
+      if (!day.length) day = a;
+      var cnt = {}, prec = 0, thunder = 0;
+      day.forEach(function (r) {
+        var ic = (r.icon || 'cloudy').replace('-night', '-day');
+        cnt[ic] = (cnt[ic] || 0) + 1;
+        if (PREC[ic]) prec++;
+        if (ic === 'thunderstorm') thunder++;
+      });
+      var icon, keys = Object.keys(cnt);
+      function top(list) { return list.sort(function (x, y) { return cnt[y] - cnt[x]; })[0]; }
+      if (thunder) icon = 'thunderstorm';
+      else if (prec >= 3) icon = top(keys.filter(function (k) { return PREC[k]; }));
+      else icon = top(keys.filter(function (k) { return !PREC[k]; })) || top(keys);
+      var sum = 0, p = 0, wind = 0;
+      a.forEach(function (r) { sum += r.precipitation || 0; if (r.precipitation_probability > p) p = r.precipitation_probability; if (r.wind_speed > wind) wind = r.wind_speed; });
+      return { d: d, tmax: Math.max.apply(null, temps), tmin: Math.min.apply(null, temps), regen: Math.round(sum * 10) / 10, wahrsch: p, wind: Math.round(wind), icon: icon };
+    }).filter(Boolean);
+  }
+  // Niederschlag der letzten 7 Tage aus den stündlichen DWD-Werten (Bright Sky): letzte Nacht (22 bis 7 Uhr), 12 und 24 Stunden, 7 Tage, Tagessummen
+  function berlinDay(t) { return new Date(t).toLocaleDateString('sv-SE', { timeZone: TZ }); }
+  function regenwerte(rows) {
+    if (!rows || !rows.length) return null;
+    var now = Date.now(), today = berlinDay(now), yest = berlinDay(now - 864e5), days = {}, order = [], s = { h12: 0, h24: 0, d7: 0, nacht: 0 }, n = 0;
+    rows.forEach(function (r) {
+      var t = Date.parse(r.timestamp), p = r.precipitation;
+      if (p == null || t > now) return;
+      n++; s.d7 += p;
+      if (now - t <= 12 * 3600e3) s.h12 += p;
+      if (now - t <= 24 * 3600e3) s.h24 += p;
+      var d = berlinDay(t), h = +new Date(t).toLocaleTimeString('en-GB', { hour: '2-digit', timeZone: TZ }).slice(0, 2);
+      if ((d === yest && h >= 22) || (d === today && h < 7)) s.nacht += p;
+      if (!(d in days)) { days[d] = 0; order.push(d); }
+      days[d] += p;
+    });
+    if (n < 24) return null;
+    var r1 = function (v) { return Math.round(v * 10) / 10; };
+    return { h12: r1(s.h12), h24: r1(s.h24), d7: r1(s.d7), nacht: r1(s.nacht), tage: order.slice(-7).map(function (d) { return { d: d, mm: r1(days[d]) }; }), n: n, bis: new Date(now).toISOString() };
+  }
   function build(cur, fc) {
     var w = cur.weather, now = new Date();
     var rows = (fc.weather || []).filter(function (r) { return r.temperature != null; });
@@ -35,6 +88,7 @@
       vorhersage: rows.filter(function (r, i) { return i % 3 === 0; }).slice(0, 9).map(function (r) {
         return { t: r.timestamp, temp: r.temperature, icon: r.icon, bedingung: r.condition, regen: r.precipitation, wahrsch: r.precipitation_probability, wolken: r.cloud_cover };
       }),
+      tage: tageswerte(rows),
       quelle: 'Deutscher Wetterdienst (DWD), über Bright Sky', quelleUrl: 'https://www.dwd.de/DE/leistungen/opendata/opendata.html'
     };
   }
@@ -50,30 +104,46 @@
     return 'rain'; // 51-55, 61-65, 80-82
   };
   var GSA_TYP = { 1: 'Sturm', 2: 'Regen', 3: 'Schnee', 4: 'Glatteis', 5: 'Gewitter', 6: 'Hitze', 7: 'Kälte' }, GSA_STUFE = { 1: 'minor', 2: 'moderate', 3: 'severe' };
+  function gsaTime(t) { return new Date(String(t).replace(/\+00:00$/, 'Z')).toISOString(); }
+  function stundenRegen(r) { // 10-Minuten-Summen der Station (GeoSphere, TAWES) -> stündliche Zeilen wie bei Bright Sky
+    try {
+      var ts = r.timestamps, v = r.features[0].properties.parameters.RR.data, by = {}, out = [];
+      ts.forEach(function (t, i) { if (v[i] == null) return; var h = Math.floor(Date.parse(gsaTime(t)) / 3600e3); by[h] = (by[h] || 0) + v[i]; });
+      Object.keys(by).sort().forEach(function (h) { out.push({ timestamp: new Date(h * 3600e3).toISOString(), precipitation: Math.round(by[h] * 10) / 10 }); });
+      return out;
+    } catch (e) { return null; }
+  }
   function loadAt() {
-    var om = 'https://api.open-meteo.com/v1/forecast?latitude=' + LAT + '&longitude=' + LON + '&timeformat=unixtime&timezone=GMT&forecast_hours=30'
+    var om = 'https://api.open-meteo.com/v1/forecast?latitude=' + LAT + '&longitude=' + LON + '&timeformat=unixtime&timezone=GMT&forecast_hours=168'
       + '&current=temperature_2m,relative_humidity_2m,precipitation,weather_code,cloud_cover,wind_speed_10m,wind_direction_10m,wind_gusts_10m,is_day'
-      + '&hourly=temperature_2m,precipitation,precipitation_probability,weather_code,cloud_cover,is_day';
-    var st = O.wetterStation ? 'https://dataset.api.hub.geosphere.at/v1/station/current/tawes-v1-10min?parameters=TL,RF,FF,FFX,DD,RR&station_ids=' + encodeURIComponent(O.wetterStation) : null;
+      + '&hourly=temperature_2m,precipitation,precipitation_probability,weather_code,cloud_cover,is_day,wind_speed_10m';
+    var GSA = 'https://dataset.api.hub.geosphere.at/v1/station/', sid = O.wetterStation ? encodeURIComponent(O.wetterStation) : null;
+    var st = sid ? GSA + 'current/tawes-v1-10min?parameters=TL,RF,FF,FFX,DD,RR&station_ids=' + sid : null;
+    var t1 = new Date(Math.floor(Date.now() / 600000) * 600000), t0 = new Date(t1.getTime() - 7 * 864e5), m16 = function (d) { return d.toISOString().slice(0, 16); };
+    var hist = sid ? GSA + 'historical/tawes-v1-10min?parameters=RR&station_ids=' + sid + '&start=' + m16(t0) + '&end=' + m16(t1) : null;
     var wa = 'https://warnungen.zamg.at/wsapp/api/getWarningsForCoords?lon=' + LON + '&lat=' + LAT + '&lang=de';
-    Promise.all([getJson(om)['catch'](function () { return null; }), st ? getJson(st)['catch'](function () { return null; }) : Promise.resolve(null), getJson(wa)['catch'](function () { return null; })]).then(function (r) {
+    var soft = function (u) { return u ? getJson(u)['catch'](function () { return null; }) : Promise.resolve(null); };
+    Promise.all([soft(om), soft(st), soft(wa), soft(hist)]).then(function (r) {
       var m = null, mt = null;
       try { var f = r[1].features[0].properties.parameters; mt = r[1].timestamps[0]; m = {}; Object.keys(f).forEach(function (k) { m[k] = f[k].data[0]; }); } catch (e) { m = null; }
       if (!r[0] && !m) throw new Error('keine Wetterdaten');
       var c = r[0] ? r[0].current : {}, h = r[0] ? r[0].hourly : { time: [] }; // ohne Open-Meteo (z. B. überlastet): nur die Messwerte der Station
       var ms = function (v) { return v == null ? null : v * 3.6; };
-      var fc = [];
-      for (var i = 0; i < h.time.length; i++) fc.push({ t: new Date(h.time[i] * 1000).toISOString(), temp: h.temperature_2m[i], icon: WMO(h.weather_code[i], h.is_day[i]), regen: h.precipitation[i], wahrsch: h.precipitation_probability[i], wolken: h.cloud_cover[i] });
+      var rows = [];
+      for (var i = 0; i < h.time.length; i++) rows.push({ timestamp: new Date(h.time[i] * 1000).toISOString(), temperature: h.temperature_2m[i], icon: WMO(h.weather_code[i], h.is_day[i]), precipitation: h.precipitation[i], precipitation_probability: h.precipitation_probability[i], cloud_cover: h.cloud_cover[i], wind_speed: h.wind_speed_10m[i] });
       var W = {
-        stand: new Date().toISOString(), messung: m && mt ? new Date(mt.replace(/\+00:00$/, 'Z')).toISOString() : new Date((c.time || Date.now() / 1000) * 1000).toISOString(),
+        stand: new Date().toISOString(), messung: m && mt ? gsaTime(mt) : new Date((c.time || Date.now() / 1000) * 1000).toISOString(),
         temp: m && m.TL != null ? m.TL : c.temperature_2m, wind: m && m.FF != null ? ms(m.FF) : c.wind_speed_10m, boe: m && m.FFX != null ? ms(m.FFX) : c.wind_gusts_10m,
         wolken: c.cloud_cover, windrichtung: m && m.DD != null ? m.DD : c.wind_direction_10m, regen60: c.precipitation, feuchte: m && m.RF != null ? Math.round(m.RF) : c.relative_humidity_2m,
         sicht: null, icon: r[0] ? WMO(c.weather_code, c.is_day) : (m && m.RR > 0 ? 'rain' : 'station'), bedingung: null,
         stationen: m ? [(O.wetterStationName || 'Station ' + O.wetterStation) + ' (GeoSphere Austria)'] : [],
-        vorhersage: fc.filter(function (x, k) { return k % 3 === 0; }).slice(0, 9),
+        vorhersage: rows.filter(function (x, k) { return k % 3 === 0; }).slice(0, 9).map(function (x) { return { t: x.timestamp, temp: x.temperature, icon: x.icon, regen: x.precipitation, wahrsch: x.precipitation_probability, wolken: x.cloud_cover }; }),
+        tage: rows.length ? tageswerte(rows) : [],
         quelle: m && r[0] ? 'GeoSphere Austria (Messung) und Open-Meteo (Vorhersage)' : m ? 'GeoSphere Austria (Messung)' : 'Open-Meteo (Wettermodell)', quelleUrl: m ? 'https://data.hub.geosphere.at' : 'https://open-meteo.com',
         modell: !m
       };
+      var hr = stundenRegen(r[3]);
+      W.regen = hr ? regenwerte(hr) : null;
       W.warn = r[2] && r[2].properties ? (r[2].properties.warnings || []).map(function (w) {
         var p = w.properties || {}, ri = p.rawinfo || {};
         return { stufe: GSA_STUFE[ri.wlevel] || 'minor', ereignis: GSA_TYP[ri.wtype] || '', titel: p.text, text: p.meteotext || p.auswirkungen, hinweis: p.empfehlungen,
@@ -86,17 +156,16 @@
   }
   function load() {
     if (!consent || !window.fetch) { finish(); return; }
-    if (AT) {
-      try { var cc = JSON.parse(sessionStorage.getItem('alw-cache2') || 'null'); if (cc && Date.now() - cc.t < 600000) { window.AL_WETTER = cc.d; finish(); return; } } catch (e) { /* kein Cache */ }
-      loadAt(); return;
-    }
     try { var c = JSON.parse(sessionStorage.getItem('alw-cache2') || 'null'); if (c && Date.now() - c.t < 600000) { window.AL_WETTER = c.d; finish(); return; } } catch (e) { /* kein Cache */ }
-    var start = new Date(Math.floor(Date.now() / 3600000) * 3600000), end = new Date(start.getTime() + 30 * 3600000);
+    if (AT) { loadAt(); return; }
+    var start = new Date(Math.floor(Date.now() / 3600000) * 3600000), end = new Date(start.getTime() + 7 * 24 * 3600000);
     var iso = function (d) { return d.toISOString().slice(0, 16); };
     Promise.all([getJson(API + '/current_weather?lat=' + LAT + '&lon=' + LON), getJson(API + '/weather?lat=' + LAT + '&lon=' + LON + '&date=' + iso(start) + '&last_date=' + iso(end)),
-      getJson(API + '/alerts?lat=' + LAT + '&lon=' + LON + '&tz=' + TZ)['catch'](function () { return null; })])
+      getJson(API + '/alerts?lat=' + LAT + '&lon=' + LON + '&tz=' + TZ)['catch'](function () { return null; }),
+      getJson(API + '/weather?lat=' + LAT + '&lon=' + LON + '&date=' + iso(new Date(start.getTime() - 7 * 24 * 3600000)) + '&last_date=' + iso(start))['catch'](function () { return null; })])
       .then(function (r) {
         window.AL_WETTER = build(r[0], r[1]);
+        window.AL_WETTER.regen = r[3] && r[3].weather ? regenwerte(r[3].weather) : null;
         // Warnungen: null = Abruf fehlgeschlagen (nicht als "keine Warnung" zeigen), [] = keine Warnung
         window.AL_WETTER.warn = r[2] && r[2].alerts ? r[2].alerts.map(function (a) {
           return { stufe: a.severity, ereignis: a.event_de, titel: a.headline_de, text: a.description_de, hinweis: a.instruction_de, ab: a.onset || a.effective, bis: a.expires };
@@ -186,6 +255,39 @@
       return '<div class="wxf"><span class="h">' + hhmm(r.t) + '</span>' + svg(r.icon, 20) + '<b>' + temp(r.temp) + '</b>' +
         (r.wahrsch >= 30 ? '<span class="p">' + r.wahrsch + ' %</span>' : '<span class="p"></span>') + '</div>';
     }).join('');
+  };
+  api.dailyHtml = function (n) { // Wetterbericht der nächsten Tage (Startseite)
+    if (!W || !W.tage || !W.tage.length) return '';
+    var today = new Date().toLocaleDateString('sv-SE', { timeZone: TZ }), short = function (t) { return nf.format(Math.round(t)).replace('-', '−') + '°'; };
+    return W.tage.filter(function (t) { return t.d >= today; }).slice(0, n || 7).map(function (t, i) {
+      var dt0 = new Date(t.d + 'T12:00:00Z'), name = i === 0 ? 'Heute' : i === 1 ? 'Morgen' : dt0.toLocaleDateString('de-DE', { weekday: 'short', timeZone: 'UTC' }) + ' ' + dt0.toLocaleDateString('de-DE', { day: 'numeric', month: 'numeric', timeZone: 'UTC' });
+      return '<div class="wxd"><span class="d">' + esc(name) + '</span>' + svg(t.icon, 24) + '<b>' + short(t.tmax) + '</b><span class="n">' + short(t.tmin) + '</span>' +
+        '<span class="p">' + (t.regen >= 0.1 ? String(t.regen).replace('.', ',') + ' mm' : 'trocken') + (t.wahrsch >= 30 ? ' · ' + t.wahrsch + ' %' : '') + '</span><span class="w">Wind bis ' + t.wind + ' km/h</span></div>';
+    }).join('');
+  };
+  api.webcamHtml = function (small) { // Webcam des DWD (ort.json: bausteine.webcam): Bilder vom Open-Data-Server, nur mit Wetter-Einwilligung
+    var C = (window.ORT || {}).webcam;
+    if (!C || !C.url) return '';
+    var base = C.url, t = Math.floor(Date.now() / 600000), nm = esc(C.name || 'Webcam');
+    return '<figure class="wxcam"><a href="' + esc(base) + '1920.jpg?t=' + t + '" target="_blank" rel="noopener"><img src="' + esc(base) + (small ? '400' : '640') + '.jpg?t=' + t + '" alt="Webcam des Deutschen Wetterdienstes: ' + nm + (C.blick ? ', Blick nach ' + esc(C.blick) : '') + '" loading="lazy" referrerpolicy="no-referrer" width="640" height="360"></a>' +
+      '<figcaption>Webcam: ' + nm + (C.blick ? ', Blick nach ' + esc(C.blick) : '') + (C.entfernung_km ? ', rund ' + esc(C.entfernung_km) + ' km von hier' : '') + '. Bild alle 10 Minuten neu, Klick vergrößert. Quelle: <a href="https://www.dwd.de/DE/service/rechtliche_hinweise/rechtliche_hinweise_node.html" target="_blank" rel="noopener">Deutscher Wetterdienst, CC BY 4.0</a>.</figcaption></figure>';
+  };
+  api.rainHtml = function (compact) { // Niederschlag der letzten Tage (gemessen)
+    var R = W && W.regen;
+    if (!fresh || !R) return '';
+    var mm = function (v) { return String(v).replace('.', ',') + ' mm'; };
+    if (compact) return '<p class="wxrain">Niederschlag: letzte Nacht <b>' + mm(R.nacht) + '</b> · 24 Stunden <b>' + mm(R.h24) + '</b> · 7 Tage <b>' + mm(R.d7) + '</b></p>';
+    var max = Math.max(5, Math.max.apply(null, R.tage.map(function (t) { return t.mm; }))), VW = 420, VH = 100, bw = VW / R.tage.length;
+    var bars = R.tage.map(function (t, i) {
+      var h = Math.round(t.mm / max * 58), d = new Date(t.d + 'T12:00:00Z'), cx = i * bw + bw / 2;
+      return '<rect x="' + (i * bw + bw * 0.2).toFixed(1) + '" y="' + (76 - h) + '" width="' + (bw * 0.6).toFixed(1) + '" height="' + Math.max(h, t.mm > 0 ? 2 : 1) + '" rx="2" fill="' + (t.mm > 0 ? 'var(--cyan)' : 'rgba(255,255,255,.2)') + '"><title>' + esc(d.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'numeric', timeZone: 'UTC' }) + ': ' + mm(t.mm)) + '</title></rect>'
+        + '<text x="' + cx.toFixed(1) + '" y="94" text-anchor="middle" class="wxrt">' + d.toLocaleDateString('de-DE', { weekday: 'short', timeZone: 'UTC' }).slice(0, 2) + '</text>'
+        + (t.mm >= 0.1 ? '<text x="' + cx.toFixed(1) + '" y="' + Math.max(10, 72 - h) + '" text-anchor="middle" class="wxrt wxrv">' + String(t.mm).replace('.', ',') + '</text>' : '');
+    }).join('');
+    return '<div class="wxrs"><span>Letzte Nacht (22 bis 7 Uhr) <b>' + mm(R.nacht) + '</b></span><span>12 Stunden <b>' + mm(R.h12) + '</b></span><span>24 Stunden <b>' + mm(R.h24) + '</b></span><span>7 Tage <b>' + mm(R.d7) + '</b></span></div>'
+      + (R.d7 === 0 ? '' : '<svg class="wxbars" viewBox="0 0 420 100" role="img" aria-label="Niederschlag je Tag in den letzten 7 Tagen">' + bars + '</svg>')
+      + (R.d7 === 0 ? '<p class="note">In den letzten 7 Tagen wurde kein Niederschlag gemessen.</p>' : '')
+      + '<p class="note">' + (AT ? 'Gemessen an der Wetterstation ' + esc(O.wetterStationName || '') + ' (GeoSphere Austria, 10-Minuten-Werte), Summen in Millimetern. Ohne Gewähr.' : 'Stündliche Werte der DWD-Stationen in der Umgebung (über Bright Sky), Summen in Millimetern. Ohne Gewähr.') + '</p>';
   };
   api.sourceHtml = function () {
     if (AT) return 'Quelle: Messwerte ' + (W.stationen && W.stationen.length ? 'der Wetterstation ' + esc(W.stationen.join(', ')) + ', ' + hhmm(W.messung) + ' Uhr' : 'nicht abrufbar, Werte aus dem Wettermodell')

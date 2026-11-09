@@ -69,6 +69,7 @@ def main():
         os.makedirs(os.path.dirname(STEMPEL), exist_ok=True)
         open(STEMPEL, "w", encoding="utf-8").write(dt.date.today().isoformat())
     else:
+        run("fetch.py", "dop", must=False)  # Luftbilder, die beim Erstaufbau nicht kamen, nachladen (vorhandene bleiben)
         run("update_weekly.py")
     gesch = os.path.join(ROOT, "site", "data", "ortsgeschichte.js")
     if (ORT.get("bausteine") or {}).get("ortsgeschichte") and (not os.path.exists(gesch) or os.path.getsize(gesch) < 40):

@@ -316,6 +316,30 @@ def _tile(z, x, y):
     return p
 
 
+def _tile_bild(z, x, y):
+    """Kachel als Bild. Einzelne Kacheln liefert basemap.at wiederholt nicht aus (Zeitueberschreitung bei immer denselben
+    Kacheln, beobachtet im Pages-Lauf): dann die Kachel der naechstgroeberen Stufe nehmen und den passenden Viertelausschnitt
+    vergroessern (bis zu zwei Stufen). Erst wenn auch das scheitert, bricht die Kachel des Kartenausschnitts ab."""
+    from PIL import Image
+    last = None
+    for d in range(3):
+        try:
+            p = _tile(z - d, x >> d, y >> d)
+        except RuntimeError as e:
+            last = e
+            continue
+        if p is None:
+            return None
+        im = Image.open(p).convert("RGB")
+        if d:
+            n = 256 >> d
+            ox, oy = (x - ((x >> d) << d)) * n, (y - ((y >> d) << d)) * n
+            im = im.crop((ox, oy, ox + n, oy + n)).resize((256, 256), Image.BICUBIC)
+            log("  Ersatz fuer Kachel %d/%d/%d aus Stufe %d" % (z, y, x, z - d))
+        return im
+    raise last
+
+
 def getmap(bbox, w, h):
     """Luftbild fuer das Rechteck (Sued, West, Nord, Ost) in w x h Bildpunkten, linear in Grad (wie die Kacheln der Karte).
     Aus den Kacheln von basemap.at (Web-Mercator) zusammengesetzt und je Streifen von 32 Zeilen entzerrt."""
@@ -329,9 +353,9 @@ def getmap(bbox, w, h):
     mos = Image.new("RGB", ((tx1 - tx0 + 1) * 256, (ty1 - ty0 + 1) * 256), (10, 22, 38))
     jobs = [(tx, ty) for tx in range(tx0, tx1 + 1) for ty in range(ty0, ty1 + 1)]
     with ThreadPoolExecutor(4) as ex:
-        for (tx, ty), p in zip(jobs, ex.map(lambda j: _tile(z, j[0], j[1]), jobs)):
-            if p:  # fehlende Kachel (ausserhalb Oesterreichs) bleibt dunkel
-                mos.paste(Image.open(p).convert("RGB"), ((tx - tx0) * 256, (ty - ty0) * 256))
+        for (tx, ty), im in zip(jobs, ex.map(lambda j: _tile_bild(z, j[0], j[1]), jobs)):
+            if im:  # fehlende Kachel (ausserhalb Oesterreichs) bleibt dunkel
+                mos.paste(im, ((tx - tx0) * 256, (ty - ty0) * 256))
     ox, oy = tx0 * 256, ty0 * 256
     mesh, step = [], 32
     for r in range(0, h, step):

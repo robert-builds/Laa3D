@@ -64,6 +64,7 @@ jobs:
         run: python scripts/ort_pruefen.py
 
       - name: Bauen
+        timeout-minutes: 120
         run: python scripts/ci_bauen.py
 
       - name: Große Zwischendateien entfernen

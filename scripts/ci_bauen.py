@@ -9,7 +9,7 @@ Selten benoetigte Daten (Ortsgeschichte) holt das Skript, wenn sie fehlen.
 
 Aufruf: python scripts/ci_bauen.py
 """
-import datetime as dt, os, shutil, subprocess, sys
+import datetime as dt, os, shutil, subprocess, sys, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -69,7 +69,13 @@ def main():
         os.makedirs(os.path.dirname(STEMPEL), exist_ok=True)
         open(STEMPEL, "w", encoding="utf-8").write(dt.date.today().isoformat())
     else:
-        run("fetch.py", "dop", must=False)  # Luftbilder, die beim Erstaufbau nicht kamen, nachladen (vorhandene bleiben)
+        # Luftbilder, die beim Erstaufbau nicht kamen, nachladen (vorhandene bleiben). basemap.at liefert einzelne Kacheln von
+        # GitHub aus nicht; damit der Wochenlauf nicht daran haengt: hoechstens LUFTBILD_MINUTEN, kurze Zeitgrenzen, Rest beim naechsten Lauf
+        os.environ.update({"LUFTBILD_BIS": str(time.time() + 60 * int(os.environ.get("LUFTBILD_MINUTEN", "15"))),
+                           "BASEMAP_TIMEOUT": os.environ.get("BASEMAP_TIMEOUT", "15"), "BASEMAP_VERSUCHE": os.environ.get("BASEMAP_VERSUCHE", "2")})
+        run("fetch.py", "dop", must=False)
+        for k in ("LUFTBILD_BIS", "BASEMAP_TIMEOUT", "BASEMAP_VERSUCHE"):
+            os.environ.pop(k, None)
         run("update_weekly.py")
     gesch = os.path.join(ROOT, "site", "data", "ortsgeschichte.js")
     if (ORT.get("bausteine") or {}).get("ortsgeschichte") and (not os.path.exists(gesch) or os.path.getsize(gesch) < 40):

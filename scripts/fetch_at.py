@@ -30,6 +30,9 @@ WMTS = "https://mapsneu.wien.gv.at/basemap/bmaporthofoto30cm/normal/google3857/{
 # basemap.at drosselt viele gleichzeitige Abrufe (beobachtet von GitHub Actions aus: Zeitueberschreitungen ab rund 18 parallelen
 # Anfragen). Darum hoechstens BASEMAP_PARALLEL Anfragen gleichzeitig ueber alle Kacheln hinweg.
 _BASEMAP = threading.BoundedSemaphore(int(os.environ.get("BASEMAP_PARALLEL", "4")))
+_BM_TIMEOUT = int(os.environ.get("BASEMAP_TIMEOUT", "30"))  # Sekunden je Anfrage
+_BM_VERSUCHE = int(os.environ.get("BASEMAP_VERSUCHE", "4"))
+_BM_BIS = float(os.environ.get("LUFTBILD_BIS") or 0)  # Zeitbudget (Unix-Zeit): danach keine neuen Abrufe mehr, Kachel wird beim naechsten Lauf geholt
 sys.stdout.reconfigure(encoding="utf-8")
 
 
@@ -305,9 +308,11 @@ def _tile(z, x, y):
     """Kachel aus dem Zwischenspeicher oder von basemap.at; None ausserhalb Oesterreichs (der Dienst antwortet dort mit 404)."""
     p = os.path.join(CACHE, "basemap", str(z), str(y), "%d.jpeg" % x)
     if not have(p):
+        if _BM_BIS and time.time() > _BM_BIS:
+            raise RuntimeError("Zeitbudget fuer Luftbilder aufgebraucht")
         try:
             with _BASEMAP:
-                blob = http(WMTS.format(z=z, x=x, y=y), timeout=30, tries=4)
+                blob = http(WMTS.format(z=z, x=x, y=y), timeout=_BM_TIMEOUT, tries=_BM_VERSUCHE)
             save(p, blob)
         except urllib.error.HTTPError as e:
             if e.code == 404:
